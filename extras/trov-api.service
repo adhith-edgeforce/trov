@@ -1,0 +1,19 @@
+[Unit]
+Description=TROV Web API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nvidia
+Group=nvidia
+ExecStart=/usr/bin/python /data/trov_ws/trov_api.py
+WorkingDirectory=/data/trov_ws
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=trov-api
+
+[Install]
+WantedBy=multi-user.target

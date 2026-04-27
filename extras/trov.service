@@ -1,0 +1,37 @@
+[Unit]
+Description=TROV Full Stack Launch
+After=network-online.target systemd-udevd.service
+Wants=network-online.target
+
+# Wait for IMU USB port
+After=dev-ttyUSB0.device
+Requires=dev-ttyUSB0.device
+
+# Wait for Pixhawk USB port
+After=dev-ttyACM0.device
+Requires=dev-ttyACM0.device
+
+[Service]
+Type=simple
+User=nvidia
+Group=nvidia
+
+ExecStart=/bin/bash /home/nvidia/trov_launch_files.sh
+
+# Auto-start on boot — will wait for hardware above before starting
+Restart=no
+
+# Give it enough time to shut down cleanly (all the pkill cleanup)
+TimeoutStopSec=30
+
+# Allow the script to run sudo systemctl commands if needed
+# (not needed now but safe to have)
+TimeoutStartSec=120
+
+# Logging — journald captures everything automatically
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=trov
+
+[Install]
+WantedBy=multi-user.target

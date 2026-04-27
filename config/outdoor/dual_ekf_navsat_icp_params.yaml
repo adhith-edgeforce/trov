@@ -1,0 +1,173 @@
+ekf_filter_node_odom:
+  ros__parameters:
+    use_sim_time: false
+    frequency: 30.0              # increased from 10Hz — icp_odometry runs at ~8Hz
+                                 # but IMU at 100Hz benefits from higher EKF rate
+    two_d_mode: false            # changed from true — icp_odometry gives full 3D pose
+                                 # your Airy is hemispherical, terrain may be uneven
+    print_diagnostics: true
+    debug: false
+    publish_tf: false            # CRITICAL change from true → false
+                                 # icp_odometry already publishes odom→base_link TF
+                                 # if EKF also publishes it, TF tree will conflict
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    dynamic_process_noise_covariance: true   # changed from false
+                                             # handles icp_odometry dropout/jitter
+
+    # -------- ODOM (icp_odometry) --------
+    odom0: /odom
+    odom0_config: [true,  true,  false,   # x, y — valid from ICP
+                   false, false, false,   # roll, pitch, yaw — not fused here
+                   true,  true,  false,   # vx, vy — ICP provides real velocity
+                                          # unlike old /odom which had -1 twist
+                   false, false, true,    # vyaw — valid from ICP
+                   false, false, false]   # ax, ay, az
+    odom0_queue_size: 20                  # increased — handles 8Hz + jitter
+    odom0_differential: false
+    odom0_relative: false
+    odom0_pose_rejection_threshold: 15.0  # reject ICP jumps > threshold
+    odom0_twist_rejection_threshold: 1.0
+
+    # -------- IMU --------
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  false, false, true,     # yaw — IMU absolute yaw is precise (1.22e-05)
+                  false, false, false,
+                  true,  false, true,     # vroll, vyaw — angular velocity (3.05e-08)
+                  false, false, false]
+    imu0_queue_size: 30                   # increased from 50 — 30 is enough at 100Hz
+    imu0_remove_gravitational_acceleration: true
+    imu0_differential: false
+    imu0_relative: false
+    imu0_pose_rejection_threshold: 0.05
+    imu0_angular_velocity_rejection_threshold: 0.1
+
+    use_control: false
+
+    process_noise_covariance: [
+      0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.06, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+
+      0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                           # yaw process noise lowered 0.2→0.01
+                                           # IMU yaw is very precise (1.22e-05)
+
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                           # velocity noise lowered 0.5→0.1
+                                           # ICP provides better velocity than wheel odom
+
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.001,0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.001,0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.001,0.0,  0.0,  0.0,
+                                           # angular velocity noise lowered 0.6→0.001
+                                           # IMU angular velocity is very precise (3.05e-08)
+
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5
+    ]
+
+ekf_filter_node_map:
+  ros__parameters:
+    use_sim_time: false
+    frequency: 30.0              # increased from 10Hz
+    two_d_mode: false            # changed from true — match odom EKF
+    print_diagnostics: true
+    debug: false
+    publish_tf: true             # map EKF publishes map→odom TF — keep true
+
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: map
+
+    dynamic_process_noise_covariance: true   # changed from false
+
+    # -------- ODOM (icp_odometry) --------
+    # In map EKF, only contribute velocity — position comes from GPS
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,   # vx, vy — velocity contribution only
+                   false, false, true,    # vyaw
+                   false, false, false]
+    odom0_queue_size: 20
+    odom0_differential: false
+    odom0_relative: false
+
+    # -------- IMU --------
+    imu0: /imu/data
+    imu0_config: [false, false, false,
+                  false, false, true,     # yaw
+                  false, false, false,
+                  true,  false, true,     # vroll, vyaw
+                  false, false, false]
+    imu0_queue_size: 30
+    imu0_remove_gravitational_acceleration: true
+    imu0_differential: false             # changed from true — IMU absolute yaw is reliable
+    imu0_relative: false
+    imu0_pose_rejection_threshold: 0.05
+    imu0_angular_velocity_rejection_threshold: 0.1
+
+    # -------- GPS --------
+    gps0: /odometry/gps
+    gps0_config: [true,  true,  false,   # x, y only — GPS altitude unreliable (-62m)
+                  false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    gps0_queue_size: 10
+    gps0_differential: false
+    gps0_relative: false
+    gps0_pose_rejection_threshold: 20.0  # ~4σ of GPS covariance (~14.8)
+
+    use_control: false
+
+    process_noise_covariance: [
+      0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.06, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+
+      0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.001,0.0,  0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.001,0.0,  0.0,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.001,0.0,  0.0,  0.0,
+
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,
+      0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.5
+    ]
+
+navsat_transform:
+  ros__parameters:
+    use_sim_time: false
+    frequency: 10.0
+    delay: 0.0                   # changed from 0.3 — no artificial delay needed
+                                 # icp_odometry provides better pose than old /odom
+
+    magnetic_declination_radians: -0.0162   # changed from 0.0
+                                            # Hyderabad: -0.93° = -0.0162 radians
+    yaw_offset: 0.0
+
+    zero_altitude: true          # keep true — GPS altitude is -62m (unreliable)
+    broadcast_cartesian_transform: true
+    publish_filtered_gps: true
+    use_odometry_yaw: true       # use EKF yaw (from precise IMU) for GPS heading
+    wait_for_datum: false

@@ -1,0 +1,78 @@
+# Route Graph for Warehouse Navigation
+# Defines waypoints (nodes) and allowed paths (edges) between them
+
+graph_id: "warehouse_patrol"
+graph_name: "Warehouse Patrol Graph"
+
+# Nodes are waypoints with their coordinates
+nodes:
+  - id: "entrance"
+    pose:
+      position:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+    
+  - id: "station_a"
+    pose:
+      position:
+        x: 3.0
+        y: 2.0
+        z: 0.0
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: 0.707
+        w: 0.707
+    
+  - id: "station_b"
+    pose:
+      position:
+        x: 3.0
+        y: -2.0
+        z: 0.0
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: -0.707
+        w: 0.707
+    
+  - id: "loading_dock"
+    pose:
+      position:
+        x: 6.0
+        y: 0.0
+        z: 0.0
+      orientation:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+
+# Edges define allowed paths between nodes
+# The robot can ONLY travel along these defined edges
+edges:
+  - id: "entrance_to_a"
+    from_node: "entrance"
+    to_node: "station_a"
+    bidirectional: true  # Can go both ways
+    
+  - id: "entrance_to_b"
+    from_node: "entrance"
+    to_node: "station_b"
+    bidirectional: true
+    
+  - id: "a_to_dock"
+    from_node: "station_a"
+    to_node: "loading_dock"
+    bidirectional: true
+    
+  - id: "b_to_dock"
+    from_node: "station_b"
+    to_node: "loading_dock"
+    bidirectional: true

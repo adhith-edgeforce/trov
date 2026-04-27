@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+
+# Duplicate/temp files
+*copy.py
+
+# Maps (large binary files - PGM already ignored by extension)
+*.pgm
+*.stl
+*.stl
+
+.vscode

@@ -1,0 +1,68 @@
+<!--
+  Factory Navigation BT - First Mile / Last Mile + Route Server
+  
+  Architecture:
+  1. FIRST MILE:  ComputePathToPose  (freespace NavFn) → robot's current position to nearest graph node
+  2. ROUTE:       ComputeRoute       (route server)    → graph-based routing to goal
+  3. LAST MILE:   ComputePathToPose  (freespace NavFn) → nearest goal node to exact goal pose
+  
+  This matches the Nav2 recommended architecture for factory/warehouse use.
+  
+  Flow when you click "2D Goal Pose" in RViz:
+  - Robot navigates via freespace to the nearest graph node
+  - Route server finds optimal graph path to goal area
+  - Freespace planner handles final approach to exact goal
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <Sequence name="FactoryNavigation">
+
+        <!-- ══════════════════════════════════════════════
+             PHASE 1: FIRST MILE
+             Freespace plan from robot's current pose
+             to the start of the route (nearest graph node)
+             The route server uses use_start=false so it
+             finds the nearest node automatically via KD-tree
+             ══════════════════════════════════════════════ -->
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputeRoute">
+            <ComputeRoute
+              goal="{goal}"
+              path="{path}"
+              route="{route}"
+              use_poses="true"
+              use_start="false"/>
+            <Wait wait_duration="2.0"/>
+          </RecoveryNode>
+        </RateController>
+
+        <!-- ══════════════════════════════════════════════
+             PHASE 2: FOLLOW THE ROUTE
+             Controller follows the route server's dense path
+             ══════════════════════════════════════════════ -->
+        <RecoveryNode number_of_retries="1" name="FollowRoute">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <Fallback>
+            <Wait wait_duration="1.5"/>
+            <Spin spin_dist="0.5"/>
+          </Fallback>
+        </RecoveryNode>
+
+      </Sequence>
+
+      <!-- ══════════════════════════════════════════════
+           RECOVERY: If navigation fails, try these
+           ══════════════════════════════════════════════ -->
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5"/>
+          <BackUp backup_dist="0.20" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

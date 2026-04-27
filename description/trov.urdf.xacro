@@ -1,0 +1,579 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="trov_robot">
+
+  <!-- Include inertial macros -->
+  <xacro:include filename="$(find trov)/description/trov_inertial_macros.xacro"/>
+  
+  <link name="base_link"/>
+  
+  <joint name="base_link_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="chassis"/>
+    <axis xyz="0 0 0"/>
+    <origin xyz="0 0 0.73"/>
+  </joint>
+
+  <!-- ================= CHASSIS ================= -->
+  <link name="chassis">
+    <visual>
+      <!-- Body STL is 1000mm x 977.74mm x 1271.91mm (1m x 0.978m x 1.272m after scaling)
+           STL origin is at corner (0,0,0), center is at (500, 488.87, 635.95) mm
+           After 0.001 scale: center at (0.5, 0.489, 0.636) m
+           We need to shift to center the mesh at origin -->
+      <origin xyz="-0.5 -0.489 -0.636" rpy="1.57 0.0 1.57"/>
+      <geometry>
+         <!-- <mesh filename="file:///data/trov_ws/install/trov/share/trov/mesh/T-ROV.stl" scale="0.001 0.001 0.001"/>  -->
+      </geometry>
+      <material name="Red"/>
+    </visual>
+   <collision>
+     <origin xyz="0.1 0 -0.1" rpy="0 0 0"/>
+      <geometry>
+       <box size="1.5 0.978 0.9"/>  <!-- Simplified from actual height -->
+      </geometry>
+   </collision>
+    <inertial>
+			<mass value="${chassis_mass}"/>
+			<inertia ixx="1e-3" ixy="0.0" ixz="0.0" iyy="1e-3" iyz="0.0" izz="1e-3"/>
+		</inertial>
+  </link>
+  <!-- ================= WHEELS ================= -->
+  <!-- Wheel STL dimensions: 228.6mm x 467.14mm x 467.14mm (0.229m x 0.467m x 0.467m)
+       Wheel is cylindrical: diameter ~467mm (radius ~0.234m), width ~229mm
+       STL center is at (399.1, 233.87, 335.0) mm = (0.399, 0.234, 0.335) m
+       We'll position wheels based on chassis ground clearance and track width -->
+  
+  <!-- FRONT LEFT WHEEL -->
+  <joint name="front_left_wheel_joint" type="continuous">
+    <parent link="chassis"/>
+    <child link="front_left_wheel"/>
+    <axis xyz="1.0 0 0"/>
+    <!-- Position: front of robot (+X), left side (+Y), at ground level
+         Front: ~0.335m from center
+         Left: 0.38m from center (track width/2)
+         Height: wheel radius = 0.234m from ground -->
+    <origin xyz="0.51 0.39 -0.50" rpy="0.0 0.0 1.57"/>
+  </joint>
+
+  <link name="front_left_wheel">
+    <visual>
+      <!-- Wheel STL center offset needs correction  -->
+      <origin xyz="-0.399 -0.234 -0.335" rpy="0 0 0"/>
+      <geometry>
+         <!-- <mesh filename="file:///data/trov_ws/install/trov/share/trov/mesh/T-ROV_wheel.stl" scale="0.001 0.001 0.001"/>  -->
+      </geometry>
+      <material name="Black"/>
+    </visual>
+    <collision>
+     <origin xyz="0 0 0" rpy="1.57 0 1.57"/>  <!-- Rotate to align cylinder -->
+     <geometry>
+       <sphere radius="0.234"/> <!-- <cylinder radius="0.234" length="0.229"/> -->
+     </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- FRONT RIGHT WHEEL -->
+  <joint name="front_right_wheel_joint" type="continuous">
+    <parent link="chassis"/>
+    <child link="front_right_wheel"/>
+    <axis xyz="1.0 0 0"/>
+    <origin xyz="0.51 -0.39 -0.50" rpy="0.0 0.0 1.57"/>
+  </joint>
+
+  <link name="front_right_wheel">
+    <visual>
+      <origin xyz="-0.399 -0.234 -0.335" rpy="0 0 0"/>
+      <geometry>
+         <!-- <mesh filename="file:///data/trov_ws/install/trov/share/trov/mesh/T-ROV_wheel.stl" scale="0.001 0.001 0.001"/>  -->
+      </geometry>
+      <material name="Black"/>
+    </visual>
+    
+    <collision>
+     <origin xyz="0 0 0" rpy="1.57 0 1.57"/>  <!-- Rotate to align cylinder -->
+     <geometry>
+       <sphere radius="0.234"/> <!-- <cylinder radius="0.234" length="0.229"/> -->
+     </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- REAR LEFT WHEEL -->
+  <joint name="rear_left_wheel_joint" type="continuous">
+    <parent link="chassis"/>
+    <child link="rear_left_wheel"/>
+    <axis xyz="1.0 0 0"/>
+    <origin xyz="-0.27 0.39 -0.50" rpy="0.0 0.0 1.57"/>
+  </joint>
+
+  <link name="rear_left_wheel">
+    <visual>
+      <origin xyz="-0.399 -0.234 -0.335" rpy="0 0 0"/>
+      <geometry>
+         <!-- <mesh filename="file:///data/trov_ws/install/trov/share/trov/mesh/T-ROV_wheel.stl" scale="0.001 0.001 0.001"/> --> 
+      </geometry>
+      <material name="Black"/>
+    </visual>
+    
+    <collision>
+     <origin xyz="0 0 0" rpy="1.57 0 1.57"/>  <!-- Rotate to align cylinder -->
+     <geometry>
+       <sphere radius="0.234"/> <!-- <cylinder radius="0.234" length="0.229"/> -->
+     </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <!-- REAR RIGHT WHEEL -->
+  <joint name="rear_right_wheel_joint" type="continuous">
+    <parent link="chassis"/>
+    <child link="rear_right_wheel"/>
+    <axis xyz="1.0 0 0"/>
+    <origin xyz="-0.27 -0.39 -0.50" rpy="0 0 1.57"/>
+    <!-- xyz="-0.18 -0.39 -0.50" rpy="0.0 0.0 1.57"/> -->
+  </joint>
+
+  <link name="rear_right_wheel">
+    <visual>
+      <origin xyz="-0.399 -0.234 -0.335" rpy="0 0 0"/>
+      <geometry>
+        <!-- <mesh filename="file:///data/trov_ws/install/trov/share/trov/mesh/T-ROV_wheel.stl" scale="0.001 0.001 0.001"/>  -->
+      </geometry>
+      <material name="Black"/>
+    </visual>
+    <collision>
+     <origin xyz="0 0 0" rpy="1.57 0 1.57"/>  <!-- Rotate to align cylinder -->
+     <geometry>
+       <sphere radius="0.234"/> <!-- <cylinder radius="0.234" length="0.229"/> -->
+     </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+    </inertial>
+  </link>
+
+  <link name="imu_link">
+    <visual>
+      <geometry>
+        <box size="${imu_length} ${imu_width} ${imu_height}"/>
+      </geometry>
+      <material name="Green"/>
+    </visual>
+  </link>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="chassis"/>
+    <child link="imu_link"/>
+    <origin xyz="0.0 0.0 -0.3" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <gazebo reference="imu_link">
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>500.0</update_rate>
+      <visualize>true</visualize>
+      <gz_frame_id>imu_link</gz_frame_id>
+      <topic>imu</topic>
+      <imu>
+        <angular_velocity>
+          <x>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>2e-4</stddev>
+              <bias_mean>0.0000075</bias_mean>
+              <bias_stddev>0.0000008</bias_stddev>
+            </noise>
+          </x>
+          <y>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>2e-4</stddev>
+              <bias_mean>0.0000075</bias_mean>
+              <bias_stddev>0.0000008</bias_stddev>
+            </noise>
+          </y>
+          <z>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>2e-4</stddev>
+              <bias_mean>0.0000075</bias_mean>
+              <bias_stddev>0.0000008</bias_stddev>
+            </noise>
+          </z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>1.7e-2</stddev>
+              <bias_mean>0.1</bias_mean>
+              <bias_stddev>0.001</bias_stddev>
+            </noise>
+          </x>
+          <y>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>1.7e-2</stddev>
+              <bias_mean>0.1</bias_mean>
+              <bias_stddev>0.001</bias_stddev>
+            </noise>
+          </y>
+          <z>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>1.7e-2</stddev>
+              <bias_mean>0.1</bias_mean>
+              <bias_stddev>0.001</bias_stddev>
+            </noise>
+          </z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+
+  <joint name="gps_joint" type="fixed">
+    <origin xyz="-0.4 0.0 0.3" rpy="0 0 0"/>
+    <parent link="chassis"/>
+    <child link = "gps_link"/>
+  </joint>
+
+  <link name="gps_link">
+    <visual>  
+      <geometry>
+        <cylinder radius="${gps_radius}" length="${gps_length}"/>
+      </geometry>
+      <material name="Green"/>
+    </visual>
+  </link>
+
+  <!-- <gazebo reference = "gps_link">
+    <sensor name="navsat" type="navsat">
+      <always_on>true</always_on>
+      <update_rate>10</update_rate>
+      <topic>/navsat/fix</topic>
+      <gz_frame_id>gps_link</gz_frame_id>
+      <navsat>
+        <position_sensing>
+          <horizontal>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>0.0</stddev>
+            </noise>
+          </horizontal>
+          <vertical>
+            <noise type="gaussian">
+              <mean>0.0</mean>
+              <stddev>0.0</stddev>
+            </noise>
+          </vertical>
+        </position_sensing>
+      </navsat>
+    </sensor>    
+  </gazebo>  -->
+
+  
+  <!-- ================= INTEL REALSENSE D457 STEREO DEPTH CAMERA ================= -->
+  <link name="camera_link">
+    <visual>
+      <geometry>
+        <!-- D457 dimensions: 124mm x 29mm x 36mm -->
+        <box size="0.029 0.124 0.036"/>
+      </geometry>
+      <material name="Green"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="0.029 0.124 0.036"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.095"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.00001" iyy="0.00012" izz="0.00012" ixy="0.0" ixz="0.0" iyz="0.0"/>
+    </inertial>
+  </link>
+
+  <joint name="camera_joint" type="fixed">
+    <!-- Mounted at front top of chassis -->
+    <origin xyz="0.76 0.01 -0.17" rpy="0 0 0"/>
+    <parent link="chassis"/>
+    <child link="camera_link"/>
+  </joint>
+
+  <!-- D457 RGB Camera Sensor (Standard Camera) -->
+  <gazebo reference="camera_link">
+    <sensor type="camera" name="realsense_d457_rgb">
+      <update_rate>39.0</update_rate>
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <camera name="rgb_camera">
+        <camera_info_topic>realsense/rgb/camera_info</camera_info_topic>
+        <horizontal_fov>1.5708</horizontal_fov> 
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>10.0</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
+      </camera>
+      <topic>realsense/rgb/image_raw</topic>
+      <gz_frame_id>camera_link</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- D457 Depth Camera Sensor (Stereo-based depth) -->
+  <gazebo reference="camera_link">
+    <sensor type="depth_camera" name="realsense_d457_depth">
+      <update_rate>10.0</update_rate>
+      <visualize>true</visualize>
+      <camera name="depth_camera">
+        <camera_info_topic>realsense/depth/camera_info</camera_info_topic>
+        <horizontal_fov>1.5184</horizontal_fov> 
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R_FLOAT32</format>
+        </image>
+        <clip>
+          <near>0.1</near>  
+          <far>10.0</far>    
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
+      </camera>
+      <topic>realsense/depth/image_raw</topic>
+      <gz_frame_id>camera_link</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- ================= ROBOSENSE AIRY 3D LIDAR (96-BEAM) ================= -->
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <!-- AIRY dimensions: 60mm diameter, 63mm height -->
+        <cylinder radius="0.03" length="0.063"/>
+      </geometry>
+      <material name="Blue"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.03" length="0.063"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.00008" iyy="0.00011" izz="0.00008" ixy="0.0" ixz="0.0" iyz="0.0"/>
+    </inertial>
+  </link>
+
+  <joint name="lidar_joint" type="fixed">
+    <!-- Mounted at front top of chassis, below camera -->
+    <origin xyz="0.76 0.01 -0.24" rpy="0 0 0"/>
+    <parent link="chassis"/>
+    <child link="lidar_link"/>
+  </joint>
+
+  <!-- AIRY LiDAR Sensor Plugin -->
+  
+  <gazebo reference="lidar_link">
+    <sensor type="gpu_lidar" name="airy_lidar">
+      <always_on>true</always_on>
+      <update_rate>15.0</update_rate>
+      <visualize>true</visualize>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>600</samples>  
+            <resolution>0.5</resolution>
+            <min_angle>-1.57</min_angle>  
+            <max_angle>1.57</max_angle>   
+          </horizontal>
+          <vertical>
+            <samples>16</samples>  
+            <resolution>0.5</resolution>
+            <min_angle>-0.523599</min_angle>  
+            <max_angle>0.523599</max_angle>   
+          </vertical>
+        </scan>
+        <range>
+          <min>0.1</min>
+          <max>20.0</max>
+          <resolution>0.05</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </lidar>
+      <topic>airy/points</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- <gazebo reference="lidar_link">
+    <material>Gazebo/Red</material>
+    <sensor name="lidar" type="gpu_lidar">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>true</visualize>
+      <update_rate>10</update_rate>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-1.57</min_angle>
+            <max_angle>1.57</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.2</min>
+          <max>30.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </lidar>
+      <alwaysOn>1</alwaysOn>
+      <topic>scan</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+    </sensor>
+  </gazebo> -->
+
+  <!-- ================= ROS2 CONTROL - HARDWARE INTERFACE ================= -->
+  <!-- 
+    gz_ros2_control replaces the old DiffDrive + JointStatePublisher Gz plugins.
+    In simulation:  hardware interface = gz_ros2_control/GazeboSimSystem
+    On real robot:  swap the plugin filename + hardware interface to your motor driver.
+    The diff_drive_controller groups front+rear wheels per side = skid steer behaviour.
+  -->
+  <ros2_control name="trov_drive" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+
+    <joint name="front_left_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="rear_left_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="front_right_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="rear_right_wheel_joint">
+      <command_interface name="velocity"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <!-- gz_ros2_control Gazebo plugin - loads the ros2_control manager inside Gz -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find trov)/config/controllers.yaml</parameters>
+      <ros>
+        <remapping>~/robot_description:=robot_description</remapping>
+        <!-- Remap diff_drive_controller's cmd_vel to /cmd_vel (collision_monitor output) -->
+        <remapping>/diff_drive_controller/cmd_vel_unstamped:=/cmd_vel</remapping>
+      </ros>
+    </plugin>
+  </gazebo>
+
+  <!-- ================= GAZEBO VISUAL MATERIALS ================= -->
+  <gazebo reference="chassis">
+    <material>Gazebo/Red</material>
+  </gazebo>
+
+   <!-- Wheel friction 
+  <gazebo reference="front_left_wheel">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1> 
+    <mu2>0.7</mu2>
+    <kp>10000000.0</kp>
+    <kd>1000.0</kd>
+    <minDepth>0.001</minDepth>
+  </gazebo>
+
+  <gazebo reference="front_right_wheel">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>0.7</mu2>
+    <kp>10000000.0</kp>
+    <kd>1000.0</kd>
+    <minDepth>0.001</minDepth>
+  </gazebo>
+
+  <gazebo reference="rear_left_wheel">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>0.7</mu2>
+    <kp>10000000.0</kp>
+    <kd>1000.0</kd>
+    <minDepth>0.001</minDepth>
+  </gazebo>
+
+  <gazebo reference="rear_right_wheel">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>0.7</mu2>
+    <kp>10000000.0</kp>
+    <kd>1000.0</kd>
+    <minDepth>0.001</minDepth>
+  </gazebo> -->
+
+  <!-- <inertial>
+    <mass value="1.0"/>
+    <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.002"/>
+  </inertial> -->
+
+  <gazebo reference="camera_link">
+    <material>Gazebo/Green</material>
+  </gazebo>
+
+  <gazebo reference="lidar_link">
+    <material>Gazebo/Blue</material>
+  </gazebo> 
+
+  <gazebo reference = "imu_link">
+    <material>Gazebo/Green</material>
+  </gazebo>
+
+</robot>

@@ -1,0 +1,44 @@
+<!--
+  Factory Navigation Behavior Tree
+  Uses Nav2 Route Server for graph-based routing (fast, lane-aware)
+  then falls back to freespace planning if route fails.
+  
+  Flow:
+  1. ComputeRoute  → finds optimal graph-based route (ms, not seconds)
+  2. FollowPath    → DWB controller tracks the route path
+  3. Recovery      → spin/backup if stuck
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+
+        <!-- Replan at 1 Hz using the route server -->
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputeRoute">
+            <ComputeRoute goal="{goal}" path="{path}" route="{route}" use_poses="true"/>
+            <Wait wait_duration="2.0"/>
+          </RecoveryNode>
+        </RateController>
+
+        <!-- Follow the computed route path -->
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <Fallback>
+            <Wait wait_duration="1.5"/>
+            <Spin spin_dist="0.5"/>
+          </Fallback>
+        </RecoveryNode>
+
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5"/>
+          <BackUp backup_dist="0.20" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>
