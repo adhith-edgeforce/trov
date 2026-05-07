@@ -1525,3 +1525,932 @@ maps:
             z: 0.927201
             w: 0.374557
           yaw_deg: 136.01
+      default:
+        metadata:
+          total: 5
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -3.0958
+            y: -0.5807
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.998854
+            w: 0.047861
+          yaw_deg: -174.51
+        - index: 1
+          position:
+            x: -4.5889
+            y: -0.7241
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.998854
+            w: 0.047861
+          yaw_deg: -174.51
+        - index: 2
+          position:
+            x: -6.2035
+            y: -0.8792
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.465383
+            w: 0.88511
+          yaw_deg: -55.47
+        - index: 3
+          position:
+            x: -4.6935
+            y: -3.0738
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.931068
+            w: 0.364847
+          yaw_deg: -137.2
+        - index: 4
+          position:
+            x: -7.2745
+            y: -5.0929
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.96312
+            w: 0.269074
+          yaw_deg: -148.78
+  failure2:
+    routes:
+      route_1:
+        metadata:
+          total: 9
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 0.5166
+            y: 1.0519
+            z: 0.0002
+          orientation:
+            x: 3.1e-05
+            y: 1.3e-05
+            z: 0.884377
+            w: -0.466773
+          yaw_deg: -124.35
+        - index: 1
+          position:
+            x: -0.3712
+            y: -0.2157
+            z: -0.0042
+          orientation:
+            x: 0.004747
+            y: 0.003594
+            z: 0.871203
+            w: -0.490886
+          yaw_deg: -121.2
+        - index: 2
+          position:
+            x: -1.1119
+            y: -1.5474
+            z: 0.0048
+          orientation:
+            x: -0.00202
+            y: 0.00197
+            z: -0.853276
+            w: 0.521452
+          yaw_deg: -117.14
+        - index: 3
+          position:
+            x: -1.7628
+            y: -2.9248
+            z: -0.0037
+          orientation:
+            x: -0.000911
+            y: -0.002227
+            z: -0.826027
+            w: 0.563626
+          yaw_deg: -111.39
+        - index: 4
+          position:
+            x: -2.3727
+            y: -4.3378
+            z: -0.0194
+          orientation:
+            x: -0.001042
+            y: -0.001642
+            z: -0.817347
+            w: 0.576143
+          yaw_deg: -109.64
+        - index: 5
+          position:
+            x: -2.886
+            y: -5.8178
+            z: -0.0183
+          orientation:
+            x: -0.001417
+            y: 0.00019
+            z: -0.796463
+            w: 0.604686
+          yaw_deg: -105.59
+        - index: 6
+          position:
+            x: -2.8381
+            y: -7.3302
+            z: -0.0291
+          orientation:
+            x: -0.003263
+            y: 0.003009
+            z: -0.337213
+            w: 0.941418
+          yaw_deg: -39.42
+        - index: 7
+          position:
+            x: -1.6154
+            y: -8.231
+            z: -0.0244
+          orientation:
+            x: 0.001681
+            y: 0.001341
+            z: -0.313988
+            w: 0.949425
+          yaw_deg: -36.6
+        - index: 8
+          position:
+            x: -0.3927
+            y: -9.2414
+            z: 0.0067
+          orientation:
+            x: -0.003353
+            y: -0.003012
+            z: -0.304198
+            w: 0.952598
+          yaw_deg: -35.42
+      route_2:
+        metadata:
+          total: 10
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 0.7136
+            y: 1.6975
+            z: -0.0001
+          orientation:
+            x: -0.001601
+            y: 0.001803
+            z: -0.846275
+            w: 0.532741
+          yaw_deg: -115.62
+        - index: 1
+          position:
+            x: -0.0612
+            y: 0.3119
+            z: -0.0164
+          orientation:
+            x: 0.007175
+            y: 0.003272
+            z: -0.85532
+            w: 0.51804
+          yaw_deg: -117.6
+        - index: 2
+          position:
+            x: -0.7999
+            y: -1.0115
+            z: 0.0042
+          orientation:
+            x: -0.005543
+            y: -0.002405
+            z: -0.845208
+            w: 0.534404
+          yaw_deg: -115.39
+        - index: 3
+          position:
+            x: -1.5736
+            y: -2.4612
+            z: -0.0105
+          orientation:
+            x: 0.005177
+            y: 0.00094
+            z: -0.838188
+            w: 0.545357
+          yaw_deg: -113.9
+        - index: 4
+          position:
+            x: -2.1982
+            y: -3.9054
+            z: -0.003
+          orientation:
+            x: -0.001396
+            y: -0.002234
+            z: -0.820383
+            w: 0.571808
+          yaw_deg: -110.25
+        - index: 5
+          position:
+            x: -2.8515
+            y: -5.2945
+            z: -0.017
+          orientation:
+            x: -0.002326
+            y: -0.000777
+            z: -0.813364
+            w: 0.58175
+          yaw_deg: -108.85
+        - index: 6
+          position:
+            x: -3.5111
+            y: -6.6721
+            z: -0.0059
+          orientation:
+            x: -0.002761
+            y: -0.001926
+            z: -0.813936
+            w: 0.580944
+          yaw_deg: -108.97
+        - index: 7
+          position:
+            x: -4.807
+            y: -7.5065
+            z: -0.0241
+          orientation:
+            x: 0.005949
+            y: 0.000307
+            z: 0.999506
+            w: 0.030859
+          yaw_deg: 176.46
+        - index: 8
+          position:
+            x: -6.1517
+            y: -6.7459
+            z: -0.0087
+          orientation:
+            x: 0.001037
+            y: 0.001207
+            z: 0.985912
+            w: 0.16726
+          yaw_deg: 160.74
+        - index: 9
+          position:
+            x: -7.6008
+            y: -6.1461
+            z: 0.0077
+          orientation:
+            x: 0.00242
+            y: -0.001134
+            z: 0.986106
+            w: 0.166095
+          yaw_deg: 160.88
+      route_map_1:
+        metadata:
+          total: 13
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -0.983
+            y: -0.0306
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.834435
+            w: 0.551107
+          yaw_deg: -113.11
+        - index: 1
+          position:
+            x: -1.9825
+            y: -2.3723
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.851895
+            w: 0.523713
+          yaw_deg: -116.84
+        - index: 2
+          position:
+            x: -2.6597
+            y: -3.7107
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.851895
+            w: 0.523713
+          yaw_deg: -116.84
+        - index: 3
+          position:
+            x: -3.3368
+            y: -5.0492
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.851895
+            w: 0.523713
+          yaw_deg: -116.84
+        - index: 4
+          position:
+            x: -4.4099
+            y: -7.1701
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.21991
+            w: 0.97552
+          yaw_deg: -25.41
+        - index: 5
+          position:
+            x: -3.055
+            y: -7.8137
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.21991
+            w: 0.97552
+          yaw_deg: -25.41
+        - index: 6
+          position:
+            x: -1.7001
+            y: -8.4573
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: -0.21991
+            w: 0.97552
+          yaw_deg: -25.41
+        - index: 7
+          position:
+            x: 0.1594
+            y: -9.3405
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: 0.975536
+            w: 0.219841
+          yaw_deg: 154.6
+        - index: 8
+          position:
+            x: -1.1956
+            y: -8.6971
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: 0.975536
+            w: 0.219841
+          yaw_deg: 154.6
+        - index: 9
+          position:
+            x: -2.5506
+            y: -8.0537
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: 0.975536
+            w: 0.219841
+          yaw_deg: 154.6
+        - index: 10
+          position:
+            x: -3.9056
+            y: -7.4103
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: 0.975536
+            w: 0.219841
+          yaw_deg: 154.6
+        - index: 11
+          position:
+            x: -5.2606
+            y: -6.767
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: 0.975536
+            w: 0.219841
+          yaw_deg: 154.6
+        - index: 12
+          position:
+            x: -7.7798
+            y: -5.5708
+            z: 0.0
+          orientation:
+            x: 0.0
+            y: 0.0
+            z: 0.975536
+            w: 0.219841
+          yaw_deg: 154.6
+      ui_test:
+        metadata:
+          total: 5
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 0.0996
+            y: 0.7718
+            z: 0.0017
+          orientation:
+            x: 0.0001
+            y: 5.0e-06
+            z: -0.847313
+            w: 0.531093
+          yaw_deg: -115.84
+        - index: 1
+          position:
+            x: -0.6303
+            y: -0.5725
+            z: -0.0011
+          orientation:
+            x: -0.004023
+            y: -0.002835
+            z: -0.841208
+            w: 0.540689
+          yaw_deg: -114.54
+        - index: 2
+          position:
+            x: -1.2669
+            y: -1.9999
+            z: -0.0024
+          orientation:
+            x: -0.001872
+            y: 0.001893
+            z: -0.826043
+            w: 0.563601
+          yaw_deg: -111.39
+        - index: 3
+          position:
+            x: -1.8422
+            y: -3.4352
+            z: -0.039
+          orientation:
+            x: 0.004891
+            y: 0.001677
+            z: -0.813868
+            w: 0.581027
+          yaw_deg: -108.95
+        - index: 4
+          position:
+            x: -2.1924
+            y: -4.9109
+            z: -0.0566
+          orientation:
+            x: -0.002792
+            y: 0.000742
+            z: -0.790366
+            w: 0.612628
+          yaw_deg: -104.44
+  demo1:
+    routes:
+      ASSEMBLY_A:
+        metadata:
+          total: 9
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -5.8187
+            y: 1.4662
+            z: -0.0028
+          orientation:
+            x: -0.000835
+            y: 0.000292
+            z: -0.732581
+            w: 0.68068
+          yaw_deg: -94.21
+        - index: 1
+          position:
+            x: -5.958
+            y: -0.0582
+            z: -0.0032
+          orientation:
+            x: -0.002162
+            y: -0.00173
+            z: -0.721724
+            w: 0.692175
+          yaw_deg: -92.39
+        - index: 2
+          position:
+            x: -6.1553
+            y: -1.5691
+            z: 0.0008
+          orientation:
+            x: -0.003568
+            y: -0.001893
+            z: -0.740432
+            w: 0.672119
+          yaw_deg: -95.54
+        - index: 3
+          position:
+            x: -6.4231
+            y: -3.0499
+            z: -0.0137
+          orientation:
+            x: 0.005082
+            y: 0.000937
+            z: -0.732279
+            w: 0.680986
+          yaw_deg: -94.16
+        - index: 4
+          position:
+            x: -6.567
+            y: -4.5795
+            z: -0.028
+          orientation:
+            x: -0.003312
+            y: -0.001062
+            z: -0.726099
+            w: 0.687582
+          yaw_deg: -93.12
+        - index: 5
+          position:
+            x: -6.7335
+            y: -6.1299
+            z: 0.0582
+          orientation:
+            x: 0.005886
+            y: 0.002789
+            z: -0.725959
+            w: 0.687707
+          yaw_deg: -93.1
+        - index: 6
+          position:
+            x: -6.8635
+            y: -7.6452
+            z: 0.0065
+          orientation:
+            x: 0.000388
+            y: 0.000912
+            z: -0.719019
+            w: 0.69499
+          yaw_deg: -91.95
+        - index: 7
+          position:
+            x: -5.3532
+            y: -7.7601
+            z: -0.0097
+          orientation:
+            x: 0.000112
+            y: -0.003066
+            z: -0.069077
+            w: 0.997607
+          yaw_deg: -7.92
+        - index: 8
+          position:
+            x: -3.8213
+            y: -8.0802
+            z: -0.0149
+          orientation:
+            x: 0.000794
+            y: 0.004273
+            z: -0.140575
+            w: 0.990061
+          yaw_deg: -16.16
+      ASSEMBLY_B:
+        metadata:
+          total: 10
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -5.3352
+            y: 1.4988
+            z: -0.0025
+          orientation:
+            x: 0.00083
+            y: -0.000507
+            z: -0.779103
+            w: 0.626896
+          yaw_deg: -102.36
+        - index: 1
+          position:
+            x: -5.7528
+            y: 0.0062
+            z: 0.0081
+          orientation:
+            x: 3.3e-05
+            y: -0.001423
+            z: -0.769213
+            w: 0.638991
+          yaw_deg: -100.57
+        - index: 2
+          position:
+            x: -6.1846
+            y: -1.5626
+            z: -0.0014
+          orientation:
+            x: -0.002978
+            y: -0.001908
+            z: -0.766705
+            w: 0.641989
+          yaw_deg: -100.12
+        - index: 3
+          position:
+            x: -6.4673
+            y: -3.0961
+            z: -0.0178
+          orientation:
+            x: -0.00144
+            y: -0.002756
+            z: -0.746098
+            w: 0.665829
+          yaw_deg: -96.51
+        - index: 4
+          position:
+            x: -6.6635
+            y: -4.6366
+            z: -0.0288
+          orientation:
+            x: -0.002796
+            y: -0.003995
+            z: -0.734652
+            w: 0.678427
+          yaw_deg: -94.56
+        - index: 5
+          position:
+            x: -6.7985
+            y: -6.1387
+            z: 0.0165
+          orientation:
+            x: 0.004035
+            y: 0.002372
+            z: -0.715644
+            w: 0.69845
+          yaw_deg: -91.39
+        - index: 6
+          position:
+            x: -7.5706
+            y: -7.428
+            z: 0.0007
+          orientation:
+            x: 0.000906
+            y: 0.00058
+            z: 0.94949
+            w: -0.313795
+          yaw_deg: -143.42
+        - index: 7
+          position:
+            x: -9.0351
+            y: -7.7637
+            z: -0.016
+          orientation:
+            x: -0.001645
+            y: -0.000975
+            z: 0.999537
+            w: 0.030368
+          yaw_deg: 176.52
+        - index: 8
+          position:
+            x: -10.5404
+            y: -7.2515
+            z: -0.0443
+          orientation:
+            x: 0.00266
+            y: 1.0e-05
+            z: 0.989654
+            w: 0.143452
+          yaw_deg: 163.5
+        - index: 9
+          position:
+            x: -12.0158
+            y: -6.91
+            z: 0.0171
+          orientation:
+            x: -0.011878
+            y: 0.009943
+            z: 0.993488
+            w: 0.112875
+          yaw_deg: 167.05
+  DEMO_2:
+    routes:
+      ASSEMBLY_A:
+        metadata:
+          total: 9
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -4.3887
+            y: 4.8753
+            z: 0.0005
+          orientation:
+            x: -0.000246
+            y: -0.002155
+            z: -0.30327
+            w: 0.952902
+          yaw_deg: -35.31
+        - index: 1
+          position:
+            x: -3.1713
+            y: 3.9653
+            z: -0.0062
+          orientation:
+            x: -0.001693
+            y: -0.004171
+            z: -0.286797
+            w: 0.957981
+          yaw_deg: -33.33
+        - index: 2
+          position:
+            x: -1.9068
+            y: 3.0532
+            z: -0.0012
+          orientation:
+            x: 0.000386
+            y: 0.000402
+            z: -0.272784
+            w: 0.962075
+          yaw_deg: -31.66
+        - index: 3
+          position:
+            x: -0.5833
+            y: 2.0957
+            z: -0.0019
+          orientation:
+            x: -0.000739
+            y: 0.000544
+            z: -0.290822
+            w: 0.956777
+          yaw_deg: -33.81
+        - index: 4
+          position:
+            x: 0.6546
+            y: 1.2293
+            z: -0.0642
+          orientation:
+            x: -0.000603
+            y: -0.004753
+            z: -0.271605
+            w: 0.962397
+          yaw_deg: -31.52
+        - index: 5
+          position:
+            x: 1.8772
+            y: 0.3348
+            z: 0.0223
+          orientation:
+            x: 0.001512
+            y: 0.005179
+            z: -0.267176
+            w: 0.963633
+          yaw_deg: -30.99
+        - index: 6
+          position:
+            x: 3.2971
+            y: -0.1874
+            z: -0.0043
+          orientation:
+            x: -0.002217
+            y: -0.001523
+            z: 0.118119
+            w: 0.992996
+          yaw_deg: 13.57
+        - index: 7
+          position:
+            x: 4.3189
+            y: 1.0161
+            z: -0.0557
+          orientation:
+            x: 0.001273
+            y: -0.003739
+            z: 0.491656
+            w: 0.87078
+          yaw_deg: 58.9
+        - index: 8
+          position:
+            x: 5.1378
+            y: 2.3146
+            z: 0.0158
+          orientation:
+            x: -0.001768
+            y: -0.002415
+            z: 0.516062
+            w: 0.856546
+          yaw_deg: 62.14
+      ASSEMBLY_B:
+        metadata:
+          total: 9
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -4.0828
+            y: 4.9754
+            z: 0.0126
+          orientation:
+            x: -0.000773
+            y: 0.002358
+            z: -0.353367
+            w: 0.935481
+          yaw_deg: -41.39
+        - index: 1
+          position:
+            x: -3.0071
+            y: 3.8504
+            z: 0.007
+          orientation:
+            x: -0.003195
+            y: -0.004193
+            z: -0.324563
+            w: 0.945849
+          yaw_deg: -37.88
+        - index: 2
+          position:
+            x: -1.8261
+            y: 2.9037
+            z: -0.0049
+          orientation:
+            x: -0.005917
+            y: -0.002106
+            z: -0.309093
+            w: 0.951011
+          yaw_deg: -36.01
+        - index: 3
+          position:
+            x: -0.5372
+            y: 2.025
+            z: -0.0009
+          orientation:
+            x: -0.000653
+            y: -0.001734
+            z: -0.274127
+            w: 0.961692
+          yaw_deg: -31.82
+        - index: 4
+          position:
+            x: 0.6943
+            y: 1.1012
+            z: -0.0444
+          orientation:
+            x: -0.002609
+            y: -0.003917
+            z: -0.314963
+            w: 0.949092
+          yaw_deg: -36.72
+        - index: 5
+          position:
+            x: 1.8967
+            y: 0.0154
+            z: 0.021
+          orientation:
+            x: 0.002398
+            y: 0.006255
+            z: -0.323103
+            w: 0.94634
+          yaw_deg: -37.7
+        - index: 6
+          position:
+            x: 2.8804
+            y: -1.2518
+            z: -0.0073
+          orientation:
+            x: -0.003043
+            y: -0.000592
+            z: -0.638426
+            w: 0.769677
+          yaw_deg: -79.35
+        - index: 7
+          position:
+            x: 2.0177
+            y: -2.5308
+            z: -0.0081
+          orientation:
+            x: 6.2e-05
+            y: -0.000654
+            z: 0.880755
+            w: -0.473572
+          yaw_deg: -123.47
+        - index: 8
+          position:
+            x: 1.0379
+            y: -3.7014
+            z: -0.049
+          orientation:
+            x: 0.009021
+            y: 0.005042
+            z: 0.889268
+            w: -0.457269
+          yaw_deg: -125.58

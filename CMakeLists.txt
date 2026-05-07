@@ -219,6 +219,11 @@ ament_target_dependencies(battery_monitor rclcpp std_msgs)
 target_include_directories(battery_monitor PRIVATE /usr/include)
 install(TARGETS battery_monitor DESTINATION lib/${PROJECT_NAME})
 
+add_executable(beeper src/beeper.cpp)
+ament_target_dependencies(beeper rclcpp mavros_msgs)
+install(TARGETS beeper DESTINATION lib/${PROJECT_NAME})
+
+
 # ============================================
 # Install targets
 # ============================================

@@ -24,8 +24,8 @@ static constexpr uint8_t CFG_LO        = 0x83;   // 1000 0011
 static constexpr float   PGA_RANGE     = 2.048f;  // must match PGA bits above
 
 // ── Battery calibration ──────────────────────────────────────────────────────
-static constexpr float   V_MIN         = 0.0f;    // voltage at   0 % battery
-static constexpr float   V_MAX         = 1.5f;    // voltage at 100 % battery — tune once confirmed
+static constexpr float   V_MIN         = 1.37f;    // voltage at   0 % battery
+static constexpr float   V_MAX         = 1.49f;    // voltage at 100 % battery — tune once confirmed
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
 static constexpr float   THR_LOW       = 30.0f;

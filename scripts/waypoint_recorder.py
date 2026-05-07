@@ -28,7 +28,6 @@ YAML structure written to indoor_waypoints.yaml:
   IDLE          → Robot not recording, not collecting points
   DRIVE         → Recording waypoints as robot physically moves
   MAP_SELECT    → Collecting map-click points for interpolation
-
   State machine:
     IDLE  → start              → DRIVE
     DRIVE → stop               → IDLE
@@ -42,29 +41,22 @@ YAML structure written to indoor_waypoints.yaml:
 ═══════════════════════════════════════════════════════════
   waypoint_recorder/set_route             std_msgs/String
       Set the route name. Ignored while DRIVE or MAP_SELECT is active.
-
   waypoint_recorder/start                 std_msgs/Empty
       Enter DRIVE mode. Begin recording waypoints as robot moves.
-
   waypoint_recorder/stop                  std_msgs/Empty
       Stop DRIVE recording and save to YAML.
-
   waypoint_recorder/clear_routes          std_msgs/Empty
       Delete ALL routes for the CURRENT MAP ONLY. Ignored unless IDLE.
-
   waypoint_recorder/start_map_select      std_msgs/Empty
       Enter MAP_SELECT mode. UI should now show point picker.
-
   waypoint_recorder/add_point             geometry_msgs/Point
       Add a map-frame x,y coordinate to the pending point list.
       Only accepted in MAP_SELECT mode.
       z is ignored (set to 0.0 internally).
-
   waypoint_recorder/generate_interpolated std_msgs/Empty
       Interpolate waypoints between pending points and save the route.
-      Only accepted in MAP_SELECT mode with ≥ 1 pending point.
+      Only accepted in MAP_SELECT mode with >= 1 pending point.
       If only 1 point, robot's current TF position is used as the start.
-
   waypoint_recorder/cancel_map_select     std_msgs/Empty
       Discard all pending points and return to IDLE.
 
@@ -74,13 +66,12 @@ YAML structure written to indoor_waypoints.yaml:
   waypoint_recorder/status          std_msgs/String   LATCHED
       {
         "mode":           "idle" | "drive" | "map_select",
-        "recording":      true | false,        ← true only in drive mode
+        "recording":      true | false,
         "map":            "adibatla_indoor_box",
         "route":          "patrol_zone_a",
-        "count":          7,                   ← drive waypoints so far
-        "pending_points": 2                    ← map-click points queued
+        "count":          7,
+        "pending_points": 2
       }
-
   available_routes                  std_msgs/String   LATCHED
       JSON object scoped to the current map:
       {
@@ -93,12 +84,13 @@ YAML structure written to indoor_waypoints.yaml:
 ═══════════════════════════════════════════════════════════
   route_name              Initial route name (default: 'default')
   distance_threshold      Min metres between waypoints (default: 1.5)
-                          Also used as interpolation step in map_select mode.
   min_waypoints           Min waypoints required to save in drive mode (default: 2)
   map_frame               TF map frame (default: 'map')
   robot_frame             TF robot frame (default: 'base_link')
   map_server_node         Name of the map_server node (default: 'map_server')
   map_detect_timeout      Seconds to wait for map_server (default: 10.0)
+  map_retry_interval      Seconds between map detection retries if startup
+                          failed (default: 5.0)
   output_file             Path to indoor_waypoints.yaml
 """
 
@@ -112,7 +104,6 @@ import rclpy.time
 from rclpy.node import Node
 from rclpy.duration import Duration
 from rclpy.qos import QoSProfile, DurabilityPolicy
-
 import tf2_ros
 import yaml
 
@@ -166,21 +157,21 @@ class IndoorWaypointRecorder(Node):
     def __init__(self):
         super().__init__('indoor_waypoint_recorder')
 
-        # ── Parameters ───────────────────────────────────────────────────────
-        self.declare_parameter('route_name',         'default')
-        self.declare_parameter('distance_threshold', 1.5)
-        self.declare_parameter('min_waypoints',      2)
-        self.declare_parameter('map_frame',          'map')
-        self.declare_parameter('robot_frame',        'base_link')
-        self.declare_parameter('map_server_node',    'map_server')
-        self.declare_parameter('map_detect_timeout', 10.0)
-        self.declare_parameter('start_topic',        'waypoint_recorder/start')
-        self.declare_parameter('stop_topic',         'waypoint_recorder/stop')
-        self.declare_parameter('set_route_topic',    'waypoint_recorder/set_route')
-        self.declare_parameter('clear_routes_topic', 'waypoint_recorder/clear_routes')
-        self.declare_parameter('status_topic',       'waypoint_recorder/status')
-        self.declare_parameter('routes_topic',       'available_routes_recorder')
-        # map_select topics
+        # ── Parameters ────────────────────────────────────────────────────────
+        self.declare_parameter('route_name',          'default')
+        self.declare_parameter('distance_threshold',  1.5)
+        self.declare_parameter('min_waypoints',       2)
+        self.declare_parameter('map_frame',           'map')
+        self.declare_parameter('robot_frame',         'base_link')
+        self.declare_parameter('map_server_node',     'map_server')
+        self.declare_parameter('map_detect_timeout',  10.0)
+        self.declare_parameter('map_retry_interval',  5.0)   # FIX: retry period
+        self.declare_parameter('start_topic',         'waypoint_recorder/start')
+        self.declare_parameter('stop_topic',          'waypoint_recorder/stop')
+        self.declare_parameter('set_route_topic',     'waypoint_recorder/set_route')
+        self.declare_parameter('clear_routes_topic',  'waypoint_recorder/clear_routes')
+        self.declare_parameter('status_topic',        'waypoint_recorder/status')
+        self.declare_parameter('routes_topic',        'available_routes_recorder')
         self.declare_parameter('start_map_select_topic',      'waypoint_recorder/start_map_select')
         self.declare_parameter('add_point_topic',             'waypoint_recorder/add_point')
         self.declare_parameter('generate_interpolated_topic', 'waypoint_recorder/generate_interpolated')
@@ -190,40 +181,41 @@ class IndoorWaypointRecorder(Node):
             os.path.expanduser('/data/trov_ws/src/trov/routes/indoor_waypoints.yaml')
         )
 
-        self.route_name          = self.get_parameter('route_name').value
-        self.dist_threshold      = self.get_parameter('distance_threshold').value
-        self.min_waypoints       = self.get_parameter('min_waypoints').value
-        self.map_frame           = self.get_parameter('map_frame').value
-        self.robot_frame         = self.get_parameter('robot_frame').value
-        self._map_server_node    = self.get_parameter('map_server_node').value
-        self._map_detect_timeout = self.get_parameter('map_detect_timeout').value
-        self.output_file         = self.get_parameter('output_file').value
-        start_topic              = self.get_parameter('start_topic').value
-        stop_topic               = self.get_parameter('stop_topic').value
-        set_route_topic          = self.get_parameter('set_route_topic').value
-        clear_routes_topic       = self.get_parameter('clear_routes_topic').value
-        status_topic             = self.get_parameter('status_topic').value
-        routes_topic             = self.get_parameter('routes_topic').value
-        start_map_select_topic   = self.get_parameter('start_map_select_topic').value
-        add_point_topic          = self.get_parameter('add_point_topic').value
-        gen_interp_topic         = self.get_parameter('generate_interpolated_topic').value
-        cancel_map_sel_topic     = self.get_parameter('cancel_map_select_topic').value
+        self.route_name           = self.get_parameter('route_name').value
+        self.dist_threshold       = self.get_parameter('distance_threshold').value
+        self.min_waypoints        = self.get_parameter('min_waypoints').value
+        self.map_frame            = self.get_parameter('map_frame').value
+        self.robot_frame          = self.get_parameter('robot_frame').value
+        self._map_server_node     = self.get_parameter('map_server_node').value
+        self._map_detect_timeout  = self.get_parameter('map_detect_timeout').value
+        self._map_retry_interval  = self.get_parameter('map_retry_interval').value
+        self.output_file          = self.get_parameter('output_file').value
 
-        # ── Active map ───────────────────────────────────────────────────────
+        start_topic             = self.get_parameter('start_topic').value
+        stop_topic              = self.get_parameter('stop_topic').value
+        set_route_topic         = self.get_parameter('set_route_topic').value
+        clear_routes_topic      = self.get_parameter('clear_routes_topic').value
+        status_topic            = self.get_parameter('status_topic').value
+        routes_topic            = self.get_parameter('routes_topic').value
+        start_map_select_topic  = self.get_parameter('start_map_select_topic').value
+        add_point_topic         = self.get_parameter('add_point_topic').value
+        gen_interp_topic        = self.get_parameter('generate_interpolated_topic').value
+        cancel_map_sel_topic    = self.get_parameter('cancel_map_select_topic').value
+
+        # ── Active map ────────────────────────────────────────────────────────
         self.active_map: str | None = None
 
-        # ── TF ───────────────────────────────────────────────────────────────
+        # ── TF ────────────────────────────────────────────────────────────────
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # ── Mode + drive state ────────────────────────────────────────────────
-        self.mode: str         = Mode.IDLE
+        self.mode: str            = Mode.IDLE
         self.last_x: float | None = None
         self.last_y: float | None = None
-        self.waypoints: list   = []          # drive mode waypoints in progress
+        self.waypoints: list      = []
 
         # ── Map-select state ──────────────────────────────────────────────────
-        # List of (x, y) tuples collected from UI clicks
         self.pending_points: list[tuple[float, float]] = []
 
         # ── Publishers ────────────────────────────────────────────────────────
@@ -232,21 +224,28 @@ class IndoorWaypointRecorder(Node):
         self._pub_routes = self.create_publisher(String, routes_topic, latched)
 
         # ── Subscribers ───────────────────────────────────────────────────────
-        # existing
-        self.create_subscription(String, set_route_topic,    self._set_route_cb,    10)
-        self.create_subscription(Empty,  start_topic,        self._start_cb,        10)
-        self.create_subscription(Empty,  stop_topic,         self._stop_cb,         10)
-        self.create_subscription(Empty,  clear_routes_topic, self._clear_routes_cb, 10)
-        # map_select
-        self.create_subscription(Empty,  start_map_select_topic, self._start_map_select_cb, 10)
-        self.create_subscription(Point,  add_point_topic,        self._add_point_cb,        10)
-        self.create_subscription(Empty,  gen_interp_topic,       self._generate_interpolated_cb, 10)
-        self.create_subscription(Empty,  cancel_map_sel_topic,   self._cancel_map_select_cb, 10)
+        self.create_subscription(String, set_route_topic,       self._set_route_cb,              10)
+        self.create_subscription(Empty,  start_topic,           self._start_cb,                  10)
+        self.create_subscription(Empty,  stop_topic,            self._stop_cb,                   10)
+        self.create_subscription(Empty,  clear_routes_topic,    self._clear_routes_cb,           10)
+        self.create_subscription(Empty,  start_map_select_topic,self._start_map_select_cb,       10)
+        self.create_subscription(Point,  add_point_topic,       self._add_point_cb,              10)
+        self.create_subscription(Empty,  gen_interp_topic,      self._generate_interpolated_cb,  10)
+        self.create_subscription(Empty,  cancel_map_sel_topic,  self._cancel_map_select_cb,      10)
 
-        # ── TF poll timer at 10 Hz (drive mode only) ──────────────────────────
+        # ── TF poll timer at 10 Hz (drive mode recording) ─────────────────────
         self.timer = self.create_timer(0.1, self._timer_callback)
 
-        # ── Detect active map ─────────────────────────────────────────────────
+        # ── FIX: Map detection retry timer ────────────────────────────────────
+        # The original node had no mechanism to recover if map_server wasn't
+        # ready when this node started. This timer retries _detect_active_map()
+        # every map_retry_interval seconds until it succeeds, then cancels itself.
+        self._map_retry_timer = self.create_timer(
+            self._map_retry_interval, self._map_retry_cb
+        )
+        # ─────────────────────────────────────────────────────────────────────
+
+        # ── Detect active map at startup ──────────────────────────────────────
         self._detect_active_map()
 
         # ── Publish initial state ─────────────────────────────────────────────
@@ -259,7 +258,8 @@ class IndoorWaypointRecorder(Node):
             f'  Active route : {self.route_name}\n'
             f'  Frames       : {self.robot_frame} → {self.map_frame}\n'
             f'  Gap          : {self.dist_threshold} m\n'
-            f'  Output       : {self.output_file}'
+            f'  Output       : {self.output_file}\n'
+            f'  Map retry    : every {self._map_retry_interval}s if not detected'
         )
 
     # =========================================================================
@@ -267,6 +267,12 @@ class IndoorWaypointRecorder(Node):
     # =========================================================================
 
     def _detect_active_map(self):
+        """
+        Query map_server for its yaml_filename parameter.
+        Retries until map_detect_timeout seconds have elapsed.
+        On success: sets self.active_map and cancels the retry timer.
+        On failure: leaves self.active_map as None — retry timer will keep trying.
+        """
         srv_name = f'/{self._map_server_node}/get_parameters'
         client   = self.create_client(GetParameters, srv_name)
 
@@ -281,7 +287,8 @@ class IndoorWaypointRecorder(Node):
             if time.time() > deadline:
                 self.get_logger().error(
                     f'[MapDetect] ✗ map_server not available after '
-                    f'{self._map_detect_timeout}s. Recording is DISABLED.'
+                    f'{self._map_detect_timeout}s. '
+                    f'Will retry every {self._map_retry_interval}s automatically.'
                 )
                 return
             self.get_logger().warn(
@@ -297,22 +304,34 @@ class IndoorWaypointRecorder(Node):
         rclpy.spin_until_future_complete(self, future, timeout_sec=remaining)
 
         if not future.done():
-            self.get_logger().error('[MapDetect] ✗ Parameter request timed out.')
+            self.get_logger().error(
+                '[MapDetect] ✗ Parameter request timed out. '
+                f'Will retry every {self._map_retry_interval}s automatically.'
+            )
             return
 
         try:
             response = future.result()
         except Exception as e:
-            self.get_logger().error(f'[MapDetect] ✗ Service call exception: {e}')
+            self.get_logger().error(
+                f'[MapDetect] ✗ Service call exception: {e}. '
+                f'Will retry every {self._map_retry_interval}s automatically.'
+            )
             return
 
         if not response.values:
-            self.get_logger().error('[MapDetect] ✗ map_server returned no yaml_filename.')
+            self.get_logger().error(
+                '[MapDetect] ✗ map_server returned no yaml_filename. '
+                f'Will retry every {self._map_retry_interval}s automatically.'
+            )
             return
 
         yaml_path = response.values[0].string_value
         if not yaml_path:
-            self.get_logger().error('[MapDetect] ✗ yaml_filename is empty.')
+            self.get_logger().error(
+                '[MapDetect] ✗ yaml_filename is empty. '
+                f'Will retry every {self._map_retry_interval}s automatically.'
+            )
             return
 
         self.active_map = _map_stem_from_yaml_path(yaml_path)
@@ -321,7 +340,37 @@ class IndoorWaypointRecorder(Node):
         )
 
     # =========================================================================
-    # Subscriber callbacks — existing (drive mode)
+    # FIX: Map detection retry timer callback
+    # =========================================================================
+
+    def _map_retry_cb(self):
+        """
+        Fires every map_retry_interval seconds.
+        If active_map is already set, cancels itself — job done.
+        If active_map is still None, retries _detect_active_map().
+        On success, publishes routes and status, then cancels itself.
+        """
+        if self.active_map is not None:
+            # Already have the map — cancel this timer, it's no longer needed
+            self._map_retry_timer.cancel()
+            return
+
+        self.get_logger().info(
+            '[MapRetry] active_map not set — retrying map detection...'
+        )
+        self._detect_active_map()
+
+        if self.active_map is not None:
+            self.get_logger().info(
+                f'[MapRetry] Map detection recovered: "{self.active_map}". '
+                f'Stopping retry timer.'
+            )
+            self._publish_available_routes()
+            self._publish_status()
+            self._map_retry_timer.cancel()
+
+    # =========================================================================
+    # Subscriber callbacks — drive mode
     # =========================================================================
 
     def _set_route_cb(self, msg: String):
@@ -329,14 +378,12 @@ class IndoorWaypointRecorder(Node):
         if not new_name:
             self.get_logger().warn('set_route: empty string — ignoring')
             return
-
         if self.mode != Mode.IDLE:
             self.get_logger().warn(
                 f'set_route: ignored — currently in {self.mode} mode. '
                 f'Return to IDLE first.'
             )
             return
-
         self.route_name = new_name
         self.get_logger().info(f'Active route set to "{self.route_name}"')
         self._publish_available_routes()
@@ -345,34 +392,30 @@ class IndoorWaypointRecorder(Node):
     def _start_cb(self, _msg: Empty):
         if self.active_map is None:
             self.get_logger().error(
-                '[DRIVE] ✗ Cannot start — active map not detected.'
+                '[DRIVE] ✗ Cannot start — active map not detected yet. '
+                'Retry is running automatically in the background.'
             )
             return
-
         if self.mode != Mode.IDLE:
             self.get_logger().warn(
                 f'[DRIVE] Already in {self.mode} mode — ignoring start.'
             )
             return
-
         if self.route_name == 'default':
             self.get_logger().warn(
                 '[DRIVE] Route name is still "default". '
                 'Consider setting a descriptive name first.'
             )
-
         existing_routes = self._read_route_names_for_map(self.active_map)
         if self.route_name in existing_routes:
             self.get_logger().warn(
                 f'[DRIVE] Route "{self.route_name}" already exists — '
                 f'recording will OVERWRITE it.'
             )
-
         self.waypoints = []
         self.last_x    = None
         self.last_y    = None
         self.mode      = Mode.DRIVE
-
         self.get_logger().info(
             f'[DRIVE] ▶ Recording STARTED  '
             f'(map: "{self.active_map}"  route: "{self.route_name}")'
@@ -385,9 +428,7 @@ class IndoorWaypointRecorder(Node):
                 f'[DRIVE] stop ignored — not in DRIVE mode (currently {self.mode}).'
             )
             return
-
         count = len(self.waypoints)
-
         if count < self.min_waypoints:
             self.get_logger().warn(
                 f'[DRIVE] Only {count} waypoint(s) recorded — '
@@ -397,7 +438,6 @@ class IndoorWaypointRecorder(Node):
             self.waypoints = []
             self._publish_status()
             return
-
         self.mode = Mode.IDLE
         self.get_logger().info(
             f'[DRIVE] ■ Recording STOPPED. '
@@ -413,23 +453,18 @@ class IndoorWaypointRecorder(Node):
                 f'clear_routes: ignored — currently in {self.mode} mode.'
             )
             return
-
         if self.active_map is None:
             self.get_logger().error('clear_routes: ✗ active map not detected.')
             return
-
         existing  = self._load_yaml()
         maps_data = existing.get('maps', {})
-
         if not isinstance(maps_data, dict) or self.active_map not in maps_data:
             self.get_logger().info(
                 f'clear_routes: no routes found for map "{self.active_map}".'
             )
             return
-
         existing['maps'][self.active_map] = {'routes': {}}
         self._write_yaml(existing)
-
         self.get_logger().warn(
             f'✗ All routes cleared for map "{self.active_map}".'
         )
@@ -443,20 +478,18 @@ class IndoorWaypointRecorder(Node):
     def _start_map_select_cb(self, _msg: Empty):
         if self.active_map is None:
             self.get_logger().error(
-                '[MAP_SELECT] ✗ Cannot start — active map not detected.'
+                '[MAP_SELECT] ✗ Cannot start — active map not detected yet. '
+                'Retry is running automatically in the background.'
             )
             return
-
         if self.mode != Mode.IDLE:
             self.get_logger().warn(
                 f'[MAP_SELECT] Cannot enter MAP_SELECT — '
                 f'currently in {self.mode} mode. Return to IDLE first.'
             )
             return
-
         self.pending_points = []
         self.mode           = Mode.MAP_SELECT
-
         self.get_logger().info(
             f'[MAP_SELECT] ▶ Entered MAP_SELECT mode  '
             f'(map: "{self.active_map}"  route: "{self.route_name}")\n'
@@ -472,10 +505,8 @@ class IndoorWaypointRecorder(Node):
                 f'(currently {self.mode}).'
             )
             return
-
         x, y = round(msg.x, 4), round(msg.y, 4)
         self.pending_points.append((x, y))
-
         self.get_logger().info(
             f'[MAP_SELECT] Point {len(self.pending_points)} added: '
             f'({x}, {y})  —  total pending: {len(self.pending_points)}'
@@ -488,26 +519,17 @@ class IndoorWaypointRecorder(Node):
                 '[MAP_SELECT] generate_interpolated ignored — not in MAP_SELECT mode.'
             )
             return
-
         n_pts = len(self.pending_points)
-
         if n_pts == 0:
             self.get_logger().warn(
                 '[MAP_SELECT] No points collected — nothing to generate. '
                 'Add at least 1 point first.'
             )
             return
-
-        # Build the full list of anchor points:
-        # If only 1 click → use robot's current position as start
-        # If 2+ clicks → interpolate through all of them in order
         anchors = self._resolve_anchors()
         if anchors is None:
-            # TF lookup failed and was needed (1-point case), already logged
             return
-
         waypoints = self._interpolate_anchors(anchors)
-
         if len(waypoints) < 2:
             self.get_logger().warn(
                 f'[MAP_SELECT] Interpolation produced only {len(waypoints)} waypoint(s). '
@@ -518,16 +540,12 @@ class IndoorWaypointRecorder(Node):
             self.mode           = Mode.IDLE
             self._publish_status()
             return
-
-        # Save — reuse existing YAML machinery
         self.waypoints = waypoints
         self._save()
-
         self.get_logger().info(
             f'[MAP_SELECT] ✓ Generated {len(waypoints)} waypoints  '
             f'(map: "{self.active_map}"  route: "{self.route_name}")'
         )
-
         self.pending_points = []
         self.waypoints      = []
         self.mode           = Mode.IDLE
@@ -540,11 +558,9 @@ class IndoorWaypointRecorder(Node):
                 '[MAP_SELECT] cancel ignored — not in MAP_SELECT mode.'
             )
             return
-
         n = len(self.pending_points)
         self.pending_points = []
         self.mode           = Mode.IDLE
-
         self.get_logger().info(
             f'[MAP_SELECT] ✗ Cancelled. {n} pending point(s) discarded.'
         )
@@ -557,7 +573,6 @@ class IndoorWaypointRecorder(Node):
     def _resolve_anchors(self) -> list[tuple[float, float]] | None:
         """
         Return the ordered list of anchor (x, y) points to interpolate through.
-
         1 pending point  → [robot_current_pos, pending_point]
         2+ pending points → pending_points as-is
         """
@@ -584,27 +599,21 @@ class IndoorWaypointRecorder(Node):
         """
         Walk through each consecutive pair of anchor points and interpolate
         evenly-spaced waypoints at dist_threshold spacing.
-
         Yaw at each waypoint faces toward the next point in the segment.
         The final waypoint inherits the yaw of the last segment.
-
         Returns a flat list of waypoint dicts in the same format as drive mode.
         """
         step   = self.dist_threshold
         result = []
-
         for seg_idx in range(len(anchors) - 1):
-            x0, y0 = anchors[seg_idx]
-            x1, y1 = anchors[seg_idx + 1]
-
+            x0, y0  = anchors[seg_idx]
+            x1, y1  = anchors[seg_idx + 1]
             seg_len = math.hypot(x1 - x0, y1 - y0)
             yaw     = _yaw_between(x0, y0, x1, y1)
             yaw_deg = round(math.degrees(yaw), 2)
             quat    = _yaw_to_quat(yaw)
 
             if seg_len < step:
-                # Segment shorter than one step — just take the start point
-                # (end point will be added as start of next segment or final)
                 if seg_idx == 0:
                     result.append(self._make_wp(len(result), x0, y0, yaw_deg, quat))
                 continue
@@ -619,13 +628,12 @@ class IndoorWaypointRecorder(Node):
                 result.append(self._make_wp(len(result), px, py, yaw_deg, quat))
 
         # Always add the final anchor as the last waypoint
-        # Yaw = same as last segment
         if len(anchors) >= 2:
-            x_last, y_last   = anchors[-1]
-            x_prev, y_prev   = anchors[-2]
-            final_yaw        = _yaw_between(x_prev, y_prev, x_last, y_last)
-            final_yaw_deg    = round(math.degrees(final_yaw), 2)
-            final_quat       = _yaw_to_quat(final_yaw)
+            x_last, y_last = anchors[-1]
+            x_prev, y_prev = anchors[-2]
+            final_yaw      = _yaw_between(x_prev, y_prev, x_last, y_last)
+            final_yaw_deg  = round(math.degrees(final_yaw), 2)
+            final_quat     = _yaw_to_quat(final_yaw)
             result.append(
                 self._make_wp(len(result), x_last, y_last, final_yaw_deg, final_quat)
             )
@@ -696,19 +704,17 @@ class IndoorWaypointRecorder(Node):
             self.get_logger().info(
                 f'Available routes for map "{self.active_map}": {routes}'
             )
-
         msg      = String()
         msg.data = json.dumps(payload)
         self._pub_routes.publish(msg)
 
     # =========================================================================
-    # TF poll timer — drive mode only
+    # TF poll timer — drive mode recording
     # =========================================================================
 
     def _timer_callback(self):
         if self.mode != Mode.DRIVE:
             return
-
         try:
             t = self.tf_buffer.lookup_transform(
                 self.map_frame,
@@ -730,7 +736,6 @@ class IndoorWaypointRecorder(Node):
             return
 
         yaw = self._yaw_from_tf(t)
-
         wp = {
             'index': len(self.waypoints),
             'position': {
@@ -746,17 +751,14 @@ class IndoorWaypointRecorder(Node):
             },
             'yaw_deg': round(math.degrees(yaw), 2),
         }
-
         self.waypoints.append(wp)
         self.last_x, self.last_y = x, y
-
         self.get_logger().info(
             f'[WP {wp["index"]:03d}]  '
             f'x={x:7.3f}  y={y:7.3f}  yaw={wp["yaw_deg"]:6.1f} deg  '
             f'(total: {len(self.waypoints)})  '
             f'map: "{self.active_map}"  route: "{self.route_name}"'
         )
-
         self._save()
         self._publish_status()
 
@@ -805,18 +807,14 @@ class IndoorWaypointRecorder(Node):
         All other maps and routes are left untouched.
         """
         existing = self._load_yaml()
-
         if 'maps' not in existing or not isinstance(existing['maps'], dict):
             existing['maps'] = {}
-
         if self.active_map not in existing['maps'] or \
                 not isinstance(existing['maps'][self.active_map], dict):
             existing['maps'][self.active_map] = {'routes': {}}
-
         map_entry = existing['maps'][self.active_map]
         if 'routes' not in map_entry or not isinstance(map_entry['routes'], dict):
             map_entry['routes'] = {}
-
         map_entry['routes'][self.route_name] = {
             'metadata': {
                 'total':                len(self.waypoints),
@@ -825,7 +823,6 @@ class IndoorWaypointRecorder(Node):
             },
             'waypoints': self.waypoints,
         }
-
         self._write_yaml(existing)
 
     # =========================================================================

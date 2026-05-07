@@ -11,6 +11,7 @@ import copy
 import json
 import math
 import os
+import subprocess
 import time
 import threading
 
@@ -98,10 +99,14 @@ class DeliveryRunner(Node):
         self.declare_parameter('arrival_pulses',            3)
         self.declare_parameter('arrival_pulse_on_sec',      3.0)
         self.declare_parameter('arrival_pulse_off_sec',     3.0)
-        self.declare_parameter('departure_beacon_sec',      10.0)
+        self.declare_parameter('departure_beacon_sec',      5.0)
         self.declare_parameter('gpio_chip_path',            '/dev/gpiochip1')
         self.declare_parameter('gpio_line',                 9)
         self.declare_parameter('return_stabilize_sec',      8.0)
+        self.declare_parameter('predeparture_delay_sec',    5.0)
+        self.declare_parameter('beep_sound_path',           '/data/trov_ws/beep_cut.mp3')
+        self.declare_parameter('beep_volume',               20)
+        self.declare_parameter('routes_poll_interval',      5.0)
 
         self.waypoints_file       = self.get_parameter('waypoints_file').value
         self.frame_id             = self.get_parameter('frame_id').value
@@ -114,6 +119,10 @@ class DeliveryRunner(Node):
         self._gpio_chip_path      = self.get_parameter('gpio_chip_path').value
         self._gpio_line_num       = self.get_parameter('gpio_line').value
         self._return_stabilize    = self.get_parameter('return_stabilize_sec').value
+        self._predeparture_delay  = self.get_parameter('predeparture_delay_sec').value
+        self._beep_sound_path     = self.get_parameter('beep_sound_path').value
+        self._beep_volume         = self.get_parameter('beep_volume').value
+        self._routes_poll_interval = self.get_parameter('routes_poll_interval').value
 
         # ── Active map ────────────────────────────────────────────────────────
         self.active_map: str | None = None
@@ -154,8 +163,35 @@ class DeliveryRunner(Node):
         self._mission_thread     = None
         self._outbound_poses: list = []
 
-        # ── GPIO pin 16 check ─────────────────────────────────────────────────
-        self._gpio16_ok = self._check_gpio16()
+        # ── Cached route list — used to detect changes and avoid noisy publishes
+        self._last_published_routes: list = []
+
+        # ── GPIO16 persistent line-holder ─────────────────────────────────────
+        #
+        # One background thread owns the gpiod line for the node's full
+        # lifetime.  _gpio16_high_event set → HIGH, cleared → LOW.
+        # All callers use _gpio16_set(True/False) only.
+        #
+        self._gpio16_ok         = self._check_gpio16()
+        self._gpio16_high_event = threading.Event()
+        self._gpio16_stop_event = threading.Event()
+        self._gpio16_thread     = threading.Thread(
+            target=self._gpio16_holder_thread, daemon=True
+        )
+        self._gpio16_thread.start()
+
+        # ── Beep loop thread ─────────────────────────────────────────────────
+        #
+        # Mirrors the beacon: set _beep_active_event → continuous looping
+        # play until the event is cleared.  Uses the sox `play` command,
+        # same as the retired C++ node.
+        #
+        self._beep_active_event = threading.Event()
+        self._beep_stop_event   = threading.Event()
+        self._beep_thread       = threading.Thread(
+            target=self._beep_loop_thread, daemon=True
+        )
+        self._beep_thread.start()
 
         # ── Publishers ────────────────────────────────────────────────────────
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -184,20 +220,30 @@ class DeliveryRunner(Node):
         self._publish_available_routes()
         self._publish_status()
 
+        # ── Poll YAML for new routes every N seconds ──────────────────────────
+        self.create_timer(
+            self._routes_poll_interval,
+            self._routes_poll_cb,
+            callback_group=self._sub_group
+        )
+
         self.get_logger().info(
             f'\n[DeliveryRunner] Ready\n'
-            f'  Active map         : {self.active_map}\n'
-            f'  Waypoints file     : {self.waypoints_file}\n'
-            f'  Arrival pulses     : {self._arrival_pulses} × '
+            f'  Active map          : {self.active_map}\n'
+            f'  Waypoints file      : {self.waypoints_file}\n'
+            f'  Routes poll         : every {self._routes_poll_interval}s\n'
+            f'  Pre-departure delay : {self._predeparture_delay}s\n'
+            f'  Arrival pulses      : {self._arrival_pulses} × '
             f'({self._pulse_on}s ON / {self._pulse_off}s OFF)\n'
-            f'  Departure beacon   : {self._departure_secs}s\n'
-            f'  Return stabilize   : {self._return_stabilize}s\n'
-            f'  GPIO chip/line     : {self._gpio_chip_path} / {self._gpio_line_num} '
+            f'  Departure beacon    : {self._departure_secs}s\n'
+            f'  Return stabilize    : {self._return_stabilize}s\n'
+            f'  GPIO chip/line      : {self._gpio_chip_path} / {self._gpio_line_num} '
             f'({"OK" if self._gpio16_ok else "DISABLED"})\n'
+            f'  Beep sound          : {self._beep_sound_path}  vol {self._beep_volume}%\n'
         )
 
     # =========================================================================
-    # GPIO — pin 16
+    # GPIO16 — hardware check (once, before holder thread starts)
     # =========================================================================
 
     def _check_gpio16(self) -> bool:
@@ -205,7 +251,9 @@ class DeliveryRunner(Node):
             self.get_logger().warn('[GPIO] gpiod not importable — pin 16 DISABLED.')
             return False
         if not os.path.exists(self._gpio_chip_path):
-            self.get_logger().warn(f'[GPIO] {self._gpio_chip_path} not found — pin 16 DISABLED.')
+            self.get_logger().warn(
+                f'[GPIO] {self._gpio_chip_path} not found — pin 16 DISABLED.'
+            )
             return False
         try:
             with gpiod.request_lines(
@@ -220,61 +268,89 @@ class DeliveryRunner(Node):
             ):
                 pass
             self.get_logger().info(
-                f'[GPIO] pin16 OK — {self._gpio_chip_path} line {self._gpio_line_num}'
+                f'[GPIO] pin16 check OK — '
+                f'{self._gpio_chip_path} line {self._gpio_line_num}'
             )
             return True
         except Exception as e:
-            self.get_logger().error(f'[GPIO] pin16 check failed: {e} — pin 16 DISABLED.')
+            self.get_logger().error(
+                f'[GPIO] pin16 check failed: {e} — pin 16 DISABLED.'
+            )
             return False
 
-    def _gpio16_pulse(self, high: bool):
-        if not self._gpio16_ok:
-            return
-        target = Value.ACTIVE if high else Value.INACTIVE
-        try:
-            with gpiod.request_lines(
-                self._gpio_chip_path,
-                consumer='delivery_runner',
-                config={
-                    self._gpio_line_num: gpiod.LineSettings(
-                        direction=Direction.OUTPUT,
-                        output_value=target
-                    )
-                }
-            ):
-                self.get_logger().info(
-                    f'[GPIO] pin16 → {"HIGH ▲" if high else "LOW  ▼"}'
-                )
-        except Exception as e:
-            self.get_logger().error(f'[GPIO] pin16 set failed: {e}')
+    # =========================================================================
+    # GPIO16 — persistent line-holder thread
+    # =========================================================================
 
-    def _departure_beacon(self):
+    def _gpio16_holder_thread(self):
+        """
+        Owns the gpiod line for the node's entire lifetime.
+        Drives HIGH while _gpio16_high_event is set, LOW otherwise.
+        Exits when _gpio16_stop_event is set.
+        """
         if not self._gpio16_ok:
-            self.get_logger().warn(
-                f'[GPIO] pin16 not available — skipping departure beacon '
-                f'(still waiting {self._departure_secs}s)'
-            )
-            time.sleep(self._departure_secs)
+            self._gpio16_stop_event.wait()
             return
+
         try:
             with gpiod.request_lines(
                 self._gpio_chip_path,
-                consumer='delivery_runner',
+                consumer='delivery_runner_gpio16',
                 config={
                     self._gpio_line_num: gpiod.LineSettings(
                         direction=Direction.OUTPUT,
-                        output_value=Value.ACTIVE
+                        output_value=Value.INACTIVE
                     )
                 }
             ) as req:
-                self.get_logger().info(
-                    f'[GPIO] pin16 → HIGH ▲  (holding for {self._departure_secs}s)'
-                )
-                time.sleep(self._departure_secs)
+                self.get_logger().info('[GPIO16-thread] Line acquired — holder running')
+                current_high = False
+
+                while not self._gpio16_stop_event.is_set():
+                    want_high = self._gpio16_high_event.is_set()
+
+                    if want_high != current_high:
+                        req.set_value(
+                            self._gpio_line_num,
+                            Value.ACTIVE if want_high else Value.INACTIVE
+                        )
+                        current_high = want_high
+                        self.get_logger().info(
+                            f'[GPIO16-thread] pin16 → '
+                            f'{"HIGH ▲" if want_high else "LOW  ▼"}'
+                        )
+
+                    self._gpio16_high_event.wait(timeout=0.05)
+
                 req.set_value(self._gpio_line_num, Value.INACTIVE)
-                self.get_logger().info('[GPIO] pin16 → LOW  ▼')
+                self.get_logger().info('[GPIO16-thread] Exiting — pin16 → LOW')
+
         except Exception as e:
-            self.get_logger().error(f'[GPIO] departure beacon failed: {e}')
+            self.get_logger().error(f'[GPIO16-thread] Fatal: {e}')
+
+    def _gpio16_set(self, high: bool):
+        """Drive GPIO16 HIGH or LOW via the persistent holder thread."""
+        if high:
+            self._gpio16_high_event.set()
+        else:
+            self._gpio16_high_event.clear()
+
+    # =========================================================================
+    # GPIO16 — departure beacon (hold HIGH for departure_beacon_sec)
+    # =========================================================================
+
+    def _departure_beacon(self):
+        self.get_logger().info(
+            f'[GPIO] pin16 → HIGH ▲  (holding for {self._departure_secs}s)'
+        )
+        self._gpio16_set(True)
+        time.sleep(self._departure_secs)
+        self._gpio16_set(False)
+        self.get_logger().info('[GPIO] pin16 → LOW  ▼  (departure beacon done)')
+
+    # =========================================================================
+    # GPIO32
+    # =========================================================================
 
     def _gpio32_set(self, value: bool):
         try:
@@ -288,6 +364,86 @@ class DeliveryRunner(Node):
             pass
 
     # =========================================================================
+    # Beep loop thread
+    # =========================================================================
+
+    def _beep_loop_thread(self):
+        """
+        Continuously plays the beep sound while _beep_active_event is set.
+        Each play() call blocks until the file finishes, then loops immediately.
+        Stops after the current play finishes once the event is cleared.
+        Exits when _beep_stop_event is set.
+        """
+        vol_fraction = max(0.0, min(1.0, self._beep_volume / 100.0))
+        self.get_logger().info('[Beep-thread] Ready')
+
+        while not self._beep_stop_event.is_set():
+            # Wait until beep is requested
+            if not self._beep_active_event.wait(timeout=0.1):
+                continue
+
+            if self._beep_stop_event.is_set():
+                break
+
+            # Check sound file exists
+            if not os.path.exists(self._beep_sound_path):
+                self.get_logger().warn(
+                    f'[Beep-thread] Sound file not found: {self._beep_sound_path} — '
+                    f'waiting for active event to clear'
+                )
+                self._beep_active_event.wait(timeout=1.0)
+                continue
+
+            self.get_logger().info('[Beep-thread] Starting beep loop')
+
+            while self._beep_active_event.is_set() and not self._beep_stop_event.is_set():
+                try:
+                    cmd = [
+                        'play', '-q',
+                        self._beep_sound_path,
+                        'vol', str(vol_fraction)
+                    ]
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    # Poll so we can react quickly if the event is cleared
+                    while proc.poll() is None:
+                        if not self._beep_active_event.is_set() or \
+                                self._beep_stop_event.is_set():
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=1.0)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                            break
+                        time.sleep(0.05)
+                except Exception as e:
+                    self.get_logger().error(f'[Beep-thread] play error: {e}')
+                    time.sleep(0.5)
+
+            self.get_logger().info('[Beep-thread] Beep loop stopped')
+
+        self.get_logger().info('[Beep-thread] Exiting')
+
+    def _beep_set(self, active: bool):
+        """Start (active=True) or stop (active=False) the continuous beep loop."""
+        if active:
+            self._beep_active_event.set()
+        else:
+            self._beep_active_event.clear()
+
+    # =========================================================================
+    # Convenience: set beacon light + beep together
+    # =========================================================================
+
+    def _mission_signal(self, active: bool):
+        """Turn GPIO16 beacon and beep ON or OFF together."""
+        self._gpio16_set(active)
+        self._beep_set(active)
+
+    # =========================================================================
     # Map detection
     # =========================================================================
 
@@ -295,15 +451,18 @@ class DeliveryRunner(Node):
         srv_name = f'/{self._map_server_node}/get_parameters'
         client   = self.create_client(GetParameters, srv_name)
         self.get_logger().info(
-            f'[MapDetect] Contacting {srv_name} (timeout: {self._map_detect_timeout}s)...'
+            f'[MapDetect] Contacting {srv_name} '
+            f'(timeout: {self._map_detect_timeout}s)...'
         )
         deadline = time.time() + self._map_detect_timeout
         while not client.wait_for_service(timeout_sec=1.0):
             if time.time() > deadline:
                 self.get_logger().error('[MapDetect] ✗ map_server not available.')
                 return
-            self.get_logger().warn('[MapDetect] map_server not ready — retrying...',
-                                   throttle_duration_sec=2.0)
+            self.get_logger().warn(
+                '[MapDetect] map_server not ready — retrying...',
+                throttle_duration_sec=2.0
+            )
         request       = GetParameters.Request()
         request.names = ['yaml_filename']
         future        = client.call_async(request)
@@ -322,6 +481,29 @@ class DeliveryRunner(Node):
             return
         self.active_map = _map_stem_from_yaml_path(response.values[0].string_value)
         self.get_logger().info(f'[MapDetect] ✓ Active map: "{self.active_map}"')
+
+    # =========================================================================
+    # Routes poll timer callback
+    # =========================================================================
+
+    def _routes_poll_cb(self):
+        """
+        Called every routes_poll_interval seconds.
+        Re-reads the YAML and republishes /delivery/available_routes only
+        if the route list has changed since the last publish.
+        Silent when nothing changed — no log spam.
+        """
+        if self.active_map is None:
+            return
+
+        current_routes = self._read_route_names_for_map(self.active_map)
+
+        if current_routes != self._last_published_routes:
+            self.get_logger().info(
+                f'[RoutesPoll] Route list changed for map "{self.active_map}": '
+                f'{self._last_published_routes} → {current_routes}. Republishing.'
+            )
+            self._publish_available_routes()
 
     # =========================================================================
     # Subscriber callbacks
@@ -351,6 +533,11 @@ class DeliveryRunner(Node):
             f'[DeliveryRunner] Mission START → '
             f'route: "{route}"  map: "{self.active_map}"'
         )
+
+        # ── Beacon + beep ON immediately when /delivery/go is received ────────
+        self._mission_signal(True)
+        self.get_logger().info('[Mission] Beacon ON + Beep START (outbound leg)')
+
         self._publish_status()
 
         self._mission_thread = threading.Thread(
@@ -367,6 +554,11 @@ class DeliveryRunner(Node):
                 )
                 return
         self.get_logger().info('[/delivery/unloaded] ✓ Unloaded signal received')
+
+        # ── Beacon + beep ON when operator sends /delivery/unloaded ──────────
+        self._mission_signal(True)
+        self.get_logger().info('[Mission] Beacon ON + Beep START (return leg)')
+
         self._unloaded_event.set()
 
     # =========================================================================
@@ -379,14 +571,26 @@ class DeliveryRunner(Node):
         except Exception as e:
             self.get_logger().error(f'[Mission] Unhandled exception: {e}')
         finally:
+            # Always ensure beacon and beep are off when mission ends
+            self._mission_signal(False)
             self._gpio32_set(False)
-            self._gpio16_pulse(False)
             with self._state_lock:
                 self._state = State.IDLE
             self._publish_status()
-            self.get_logger().info('[DeliveryRunner] Mission ended — IDLE')
+            self.get_logger().info(
+                '[DeliveryRunner] Mission ended — IDLE, Beacon OFF, Beep STOP'
+            )
 
     def _mission_body(self):
+
+        # ── 0. Pre-departure delay ───────────────────────────────────────────
+        # Beacon + beep are already ON (started in _go_cb).
+        # Robot waits here before moving — operator can hear/see the signal.
+        self.get_logger().info(
+            f'[Mission] Pre-departure delay — waiting {self._predeparture_delay}s '
+            f'before outbound navigation (beacon + beep already active)'
+        )
+        time.sleep(self._predeparture_delay)
 
         # ── 1. Load outbound waypoints ──────────────────────────────────────
         poses = self._load_poses(self._route_name)
@@ -420,16 +624,20 @@ class DeliveryRunner(Node):
         self._publish_full_path(ordered)
 
         # ── 3. OUTBOUND navigation ──────────────────────────────────────────
+        # Beacon + beep remain ON throughout outbound travel.
         self.get_logger().info(f'[Mission] OUTBOUND — {len(ordered)} waypoints')
         success = self._execute_leg(ordered, 'OUTBOUND')
         if not success:
             self.get_logger().error('[Mission] OUTBOUND failed — aborting')
             return
 
-        # ── 4. ARRIVED — pulse pin32 ────────────────────────────────────────
+        # ── 4. ARRIVED — beacon + beep OFF, then pulse pin32 ────────────────
         with self._state_lock:
             self._state = State.ARRIVED
         self._publish_status()
+
+        self._mission_signal(False)
+        self.get_logger().info('[Mission] ARRIVED — Beacon OFF, Beep STOP')
 
         self._update_robot_pose()
         self.get_logger().info(
@@ -440,20 +648,26 @@ class DeliveryRunner(Node):
         self._pulse_arrival_beacon()
 
         # ── 5. Wait for /delivery/unloaded ──────────────────────────────────
+        # _unloaded_cb will turn beacon + beep ON before setting this event.
         self._unloaded_event.clear()
         self.get_logger().info('[Mission] Waiting for /delivery/unloaded from operator...')
         self._unloaded_event.wait()
+        # At this point beacon + beep are already ON (set in _unloaded_cb)
 
-        # ── 6. DEPARTING — pin16 HIGH for departure_beacon_sec ──────────────
+        # ── 6. DEPARTING — pin16 already HIGH; hold for departure_beacon_sec ─
+        # The beacon is already ON from _unloaded_cb, so we just sleep here
+        # for the departure hold duration before the return trip begins.
         with self._state_lock:
             self._state = State.DEPARTING
         self._publish_status()
-        self.get_logger().info(f'[Mission] DEPARTING — pin16 HIGH for {self._departure_secs}s')
-        self._departure_beacon()
+        self.get_logger().info(
+            f'[Mission] DEPARTING — beacon already HIGH, '
+            f'holding {self._departure_secs}s before return navigation'
+        )
+        time.sleep(self._departure_secs)
 
         # ── 7. Stabilization wait ────────────────────────────────────────────
-        # After the person collects the delivery, ICP odometry needs time to
-        # re-lock onto the static environment before the return trip begins.
+        # Beacon + beep stay ON while ICP re-locks.
         self.get_logger().info(
             f'[DEBUG] Stabilization wait START — waiting {self._return_stabilize}s '
             f'for person to clear and ICP to re-lock'
@@ -473,7 +687,7 @@ class DeliveryRunner(Node):
         self._clear_local_costmap()
         self.get_logger().info('[DEBUG] Costmaps cleared')
 
-        # ── 8. RETURNING — reversed waypoints ───────────────────────────────
+        # ── 8. RETURNING — reversed waypoints, beacon + beep remain ON ──────
         with self._state_lock:
             self._state = State.RETURNING
         self._publish_status()
@@ -494,7 +708,9 @@ class DeliveryRunner(Node):
         )
         success = self._execute_leg(return_poses, 'RETURNING')
         if not success:
-            self.get_logger().error('[Mission] RETURNING failed — robot may need manual recovery')
+            self.get_logger().error(
+                '[Mission] RETURNING failed — robot may need manual recovery'
+            )
             return
 
         self._update_robot_pose()
@@ -503,6 +719,7 @@ class DeliveryRunner(Node):
             f'x={self._current_x:.3f}  y={self._current_y:.3f}'
         )
         self.get_logger().info('[Mission] ✓ Return complete — back home')
+        # _run_mission finally block will call _mission_signal(False)
 
     # =========================================================================
     # Arrival beacon — pin32 pulse sequence
@@ -510,7 +727,9 @@ class DeliveryRunner(Node):
 
     def _pulse_arrival_beacon(self):
         for i in range(self._arrival_pulses):
-            self.get_logger().info(f'[Beacon] Pulse {i + 1}/{self._arrival_pulses} — HIGH')
+            self.get_logger().info(
+                f'[Beacon] Pulse {i + 1}/{self._arrival_pulses} — HIGH'
+            )
             self._gpio32_set(True)
             time.sleep(self._pulse_on)
             self._gpio32_set(False)
@@ -524,7 +743,9 @@ class DeliveryRunner(Node):
 
     def _load_yaml(self) -> dict:
         if not os.path.exists(self.waypoints_file):
-            self.get_logger().error(f'Waypoints file not found: {self.waypoints_file}')
+            self.get_logger().error(
+                f'Waypoints file not found: {self.waypoints_file}'
+            )
             return {}
         try:
             with open(self.waypoints_file, 'r') as f:
@@ -558,7 +779,8 @@ class DeliveryRunner(Node):
         if not isinstance(maps_data, dict) or self.active_map not in maps_data:
             available = list(maps_data.keys()) if isinstance(maps_data, dict) else []
             self.get_logger().error(
-                f'No routes for active map "{self.active_map}". Maps in file: {available}'
+                f'No routes for active map "{self.active_map}". '
+                f'Maps in file: {available}'
             )
             return []
 
@@ -676,7 +898,9 @@ class DeliveryRunner(Node):
                 f'[DEBUG] Global costmap clear: {"OK" if ok else "TIMEOUT"}'
             )
         else:
-            self.get_logger().warn('[DEBUG] Global costmap clear service not available')
+            self.get_logger().warn(
+                '[DEBUG] Global costmap clear service not available'
+            )
 
     def _clear_local_costmap(self):
         if self._clear_local.wait_for_service(timeout_sec=2.0):
@@ -686,7 +910,9 @@ class DeliveryRunner(Node):
                 f'[DEBUG] Local costmap clear: {"OK" if ok else "TIMEOUT"}'
             )
         else:
-            self.get_logger().warn('[DEBUG] Local costmap clear service not available')
+            self.get_logger().warn(
+                '[DEBUG] Local costmap clear service not available'
+            )
 
     # =========================================================================
     # Plan leg
@@ -708,8 +934,10 @@ class DeliveryRunner(Node):
         self.get_logger().info(
             f'[DEBUG] [{label}] Sending plan request — '
             f'{len(stamped)} goals, '
-            f'first=({stamped[0].pose.position.x:.2f},{stamped[0].pose.position.y:.2f}) '
-            f'last=({stamped[-1].pose.position.x:.2f},{stamped[-1].pose.position.y:.2f})'
+            f'first=({stamped[0].pose.position.x:.2f},'
+            f'{stamped[0].pose.position.y:.2f}) '
+            f'last=({stamped[-1].pose.position.x:.2f},'
+            f'{stamped[-1].pose.position.y:.2f})'
         )
 
         future = self._planner.send_goal_async(goal)
@@ -722,8 +950,10 @@ class DeliveryRunner(Node):
             self.get_logger().error(
                 f'[{label}] Planner rejected goal — '
                 f'check waypoints are within map bounds and in free space. '
-                f'First: ({stamped[0].pose.position.x:.2f},{stamped[0].pose.position.y:.2f}) '
-                f'Last: ({stamped[-1].pose.position.x:.2f},{stamped[-1].pose.position.y:.2f})'
+                f'First: ({stamped[0].pose.position.x:.2f},'
+                f'{stamped[0].pose.position.y:.2f}) '
+                f'Last: ({stamped[-1].pose.position.x:.2f},'
+                f'{stamped[-1].pose.position.y:.2f})'
             )
             return None
 
@@ -864,10 +1094,12 @@ class DeliveryRunner(Node):
     def _publish_available_routes(self):
         if self.active_map is None:
             payload = {'map': 'unknown', 'routes': []}
+            self._last_published_routes = []
             self.get_logger().warn('available_routes: empty — map not detected yet')
         else:
             routes  = self._read_route_names_for_map(self.active_map)
             payload = {'map': self.active_map, 'routes': routes}
+            self._last_published_routes = routes
             self.get_logger().info(
                 f'Available routes for map "{self.active_map}": {routes}'
             )
@@ -888,9 +1120,14 @@ class DeliveryRunner(Node):
     # =========================================================================
 
     def destroy_node(self):
-        self.get_logger().info('[DeliveryRunner] Shutting down — GPIOs LOW')
+        self.get_logger().info('[DeliveryRunner] Shutting down — GPIOs LOW, beep STOP')
+        self._mission_signal(False)
         self._gpio32_set(False)
-        self._gpio16_pulse(False)
+        self._gpio16_stop_event.set()
+        self._beep_stop_event.set()
+        self._beep_active_event.set()   # unblock the beep thread if it's waiting
+        self._gpio16_thread.join(timeout=2.0)
+        self._beep_thread.join(timeout=3.0)
         super().destroy_node()
 
 

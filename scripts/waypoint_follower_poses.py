@@ -293,6 +293,7 @@ class IndoorRouteFollower(Node):
         self._publish_status()
 
         # ── Poll YAML for new routes every N seconds ──────────────────────────
+        # Also retries map detection if it failed at startup (active_map is None)
         self.create_timer(
             self._routes_poll_interval,
             self._routes_poll_cb,
@@ -325,6 +326,7 @@ class IndoorRouteFollower(Node):
         On success: sets self.active_map.
         On failure: leaves self.active_map as None and logs a loud error.
         Route following is disabled while active_map is None.
+        The poll timer (_routes_poll_cb) will keep retrying this automatically.
         """
         srv_name = f'/{self._map_server_node}/get_parameters'
         client   = self.create_client(GetParameters, srv_name)
@@ -341,8 +343,7 @@ class IndoorRouteFollower(Node):
                 self.get_logger().error(
                     f'[MapDetect] ✗ map_server not available after '
                     f'{self._map_detect_timeout}s. '
-                    f'Ensure map_server is running before this node. '
-                    f'Route following is DISABLED until map is detected.'
+                    f'Will retry every {self._routes_poll_interval}s automatically.'
                 )
                 return
             self.get_logger().warn(
@@ -360,7 +361,7 @@ class IndoorRouteFollower(Node):
         if not future.done():
             self.get_logger().error(
                 '[MapDetect] ✗ Parameter request timed out. '
-                'Route following is DISABLED.'
+                f'Will retry every {self._routes_poll_interval}s automatically.'
             )
             return
 
@@ -369,14 +370,14 @@ class IndoorRouteFollower(Node):
         except Exception as e:
             self.get_logger().error(
                 f'[MapDetect] ✗ Service call raised exception: {e}. '
-                f'Route following is DISABLED.'
+                f'Will retry every {self._routes_poll_interval}s automatically.'
             )
             return
 
         if not response.values:
             self.get_logger().error(
                 '[MapDetect] ✗ map_server returned no value for yaml_filename. '
-                'Route following is DISABLED.'
+                f'Will retry every {self._routes_poll_interval}s automatically.'
             )
             return
 
@@ -384,7 +385,7 @@ class IndoorRouteFollower(Node):
         if not yaml_path:
             self.get_logger().error(
                 '[MapDetect] ✗ yaml_filename parameter is empty on map_server. '
-                'Route following is DISABLED.'
+                f'Will retry every {self._routes_poll_interval}s automatically.'
             )
             return
 
@@ -401,12 +402,31 @@ class IndoorRouteFollower(Node):
     def _routes_poll_cb(self):
         """
         Called every routes_poll_interval seconds.
-        Re-reads the YAML and republishes available_routes_follower only
-        if the route list has changed since the last publish.
+
+        FIX: If active_map is still None (map detection failed at startup),
+        retry _detect_active_map() here instead of silently returning.
+        This means the node self-heals — no restart needed if map_server
+        wasn't ready when the node launched.
+
+        If active_map is set, re-read the YAML and republish
+        available_routes_follower only if the route list has changed.
         Silent when nothing changed — no log spam.
         """
+        # ── FIX: retry map detection if it failed at startup ──────────────────
         if self.active_map is None:
+            self.get_logger().info(
+                '[RoutesPoll] active_map not set — retrying map detection...'
+            )
+            self._detect_active_map()
+            if self.active_map is not None:
+                # Detection succeeded — publish now that we have a map
+                self.get_logger().info(
+                    f'[RoutesPoll] Map detection recovered: "{self.active_map}"'
+                )
+                self._publish_available_routes()
+                self._publish_status()
             return
+        # ─────────────────────────────────────────────────────────────────────
 
         current_routes = self._read_route_names_for_map(self.active_map)
 
@@ -449,7 +469,7 @@ class IndoorRouteFollower(Node):
         if self.active_map is None:
             self.get_logger().error(
                 '[RouteFollower] ✗ CANNOT START — active map not detected. '
-                'Is map_server running? Restart this node after map_server is up.'
+                'Is map_server running? Will retry map detection automatically.'
             )
             return
 

@@ -56,7 +56,7 @@ icp_odometry:
     Icp/Force4DoF: "false"              # keep false — EKF handles 2D constraint
 
     Odom/Strategy: "0"           # 0=Frame-to-Map (F2M) — more stable
-    Odom/GuessMotion: "false"     # use IMU to pre-guess motion between scans
+    Odom/GuessMotion: "true"     # use IMU to pre-guess motion between scans
     Odom/GuessSmoothingDelay: "0.1"
     Odom/KeyFrameThr: "0.3"
     Odom/ScanKeyFrameThr: "0.9"
