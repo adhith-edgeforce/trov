@@ -19,6 +19,7 @@ This document explains how the system is built, how each part works, and how to 
 | PTZ Camera | IMOU cloud-connected PTZ, controlled via IMOU API |
 | Depth Camera | Intel RealSense — used for traversability (in progress) |
 | Battery Monitor | ADS1115 ADC over I2C bus 7, address `0x48` |
+| Touchscreen | XPT2046 resistive touchscreen — SPI, 1024×600 display |
 | GPS | HRTK Mosaic — connected to Pixhawk, data comes through MAVROS; outdoor navigation planned |
 
 ---
@@ -60,7 +61,17 @@ trov_ws/
 │   │   ├── maps/                     # Saved PGM maps
 │   │   ├── routes/                   # Waypoint YAML files
 │   │   ├── scripts/                  # Python nodes — waypoint follower, recorder, delivery runner
-│   │   └── src/                      # C++ nodes — battery, collision beacon, headlight, etc.
+│   │   └── src/                      # C++ nodes — battery, collision beacon, headlight, beeper, etc.
+│   │   ├── extras/                   # Shell scripts, systemd services, config files
+│   │   │   ├── trov_launch_files.sh          # Master indoor launch script
+│   │   │   ├── trov_outdoor_launch_files.sh  # Outdoor stack launcher (in progress)
+│   │   │   ├── restart_*.sh                  # Individual stack restart scripts
+│   │   │   ├── start/stop/save_map*.sh       # Mapping scripts
+│   │   │   ├── trov.service                  # systemd service for full stack
+│   │   │   ├── trov-api.service              # systemd service for API server
+│   │   │   ├── xpt2046-touch.service         # systemd service for touchscreen driver
+│   │   │   ├── xpt2046_input.py              # XPT2046 SPI touchscreen driver
+│   │   │   └── mediamtx.yml                  # MediaMTX stream configuration
 │   ├── cpp_pubsub/                   # Drive bridge (cmd_vel → MAVROS)
 │   ├── segformer_traversability_autoware/  # Traversability segmentation node
 │   └── [third-party packages]        # See dependencies section
@@ -140,6 +151,10 @@ Several C++ nodes handle physical hardware on the robot.
 
 **Floodlight** controls Jetson GPIO board pin 32 using the `Jetson.GPIO` Python library. It subscribes to `/gpio_pin32_control` (Bool) and drives the pin HIGH or LOW accordingly. GPIO is initialized LOW on startup and cleaned up on shutdown.
 
+**Beeper** subscribes to `/mavros/manual_control/send` and plays an audio beep whenever the robot receives a non-zero drive command. It uses `sox` (`play` command) to play a configurable MP3 file at a configurable volume. Playback runs in a detached background thread so it never blocks the ROS2 callback. The beep path and volume are ROS2 parameters (`beep_sound_path`, `beep_volume`) so they can be changed without recompiling.
+
+**XPT2046 touchscreen driver** (`xpt2046_input.py`) is a standalone Python script that runs as the `xpt2046-touch.service` systemd service. It reads touch coordinates from an XPT2046 resistive touchscreen over SPI and injects them into the Linux input system via `uinput`, making the touchscreen appear as a standard input device to the OS. The calibration uses a degree-4 bivariate polynomial fit to map raw ADC coordinates to screen pixels on a 1024×600 display. Two stages of filtering are applied: a hardware median filter (8 raw readings per sample, median taken) to remove ADC noise, followed by a jump filter that rejects sudden large position changes unless confirmed by a second consecutive reading, and an exponential moving average for smooth cursor movement.
+
 ### The API server
 
 The API server (`trov_api.py`) runs as `trov-api.service` on port 5000 using Flask served by Waitress with 8 worker threads. It is what the web UI calls to perform any operation that requires a shell command or system interaction.
@@ -161,6 +176,31 @@ ROSBridge WebSocket on port 9090 gives the web UI direct access to the ROS2 topi
 A separate workspace contains a SegFormer-based semantic segmentation node that runs on the Jetson's GPU. It subscribes to `/camera/camera/color/image_raw` from the RealSense and passes each frame through a SegFormer-B5 model fine-tuned on the ADE20K dataset. Every pixel in the output is classified into one of three traversability categories — safe (floor, road, path, ground surfaces), risky (stairs, ramps, vegetation, loose furniture), or blocked (walls, doors, people, vehicles, water, and anything else the robot cannot pass through). Two image topics are published: `/fusion_segmentation/traversability` is the three-colour traversability map, and `/fusion_segmentation/semantic` is a full colour-coded semantic map showing all detected classes. Preprocessing applies CLAHE contrast enhancement in LAB colour space to improve robustness in low-light environments. The model runs in FP16 with CUDA autocast. Inference timing is tracked per frame and logged every 10 frames so performance can be monitored on the Jetson GPU.
 
 The traversability output is not yet connected to Nav2. The planned integration is a custom costmap layer that ingests the traversability image and marks risky and blocked pixels as obstacles in the costmap. This would allow the planner to route around camera-detected hazards in addition to the LiDAR obstacle layer — particularly useful for detecting low obstacles, transparent surfaces, and terrain changes that the LiDAR misses.
+
+### Outdoor navigation (in progress)
+
+Outdoor navigation is currently being developed and is not yet fully operational. The architecture uses a dual EKF setup from `robot_localization` — two EKF nodes running simultaneously, one for local odometry and one for GPS-fused global positioning.
+
+EKF1 (`ekf_filter_node_odom`) handles the `odom → base_link` transform. It fuses ICP LiDAR odometry position and heading from `/odom` with IMU yaw and yaw rate from `/imu/data`. Using ICP absolute position rather than wheel velocity integration gives significantly better odometry in outdoor environments.
+
+EKF2 (`ekf_filter_node_map`) handles the `map → odom` transform. It fuses GPS position from `/odometry/gps` (produced by `navsat_transform_node` from the raw MAVROS GPS fix) with IMU yaw. The `navsat_transform` node is configured to subscribe to EKF2's output (`odometry/filtered/global`) rather than EKF1's — this ensures the GPS odometry is published in the map frame, avoiding a circular TF dependency that would cause position explosion.
+
+GPS data comes through MAVROS from the HRTK Mosaic, which is connected directly to the Pixhawk. The magnetic declination is set for the Adibatla area (−0.0089 radians).
+
+The outdoor stack is launched separately from the indoor stack using `trov_outdoor_launch_files.sh`, which starts the LiDAR driver, IMU driver, MAVROS, drive bridge, and the `hrtk_odom` node. The remaining components — ICP odometry, dual EKF, and outdoor Nav2 — must currently be launched manually in separate terminals:
+
+```bash
+# Terminal 1 — ICP odometry
+ros2 launch trov icp_odometry_outdoor.launch.py
+
+# Terminal 2 — Dual EKF + navsat transform
+ros2 launch trov dual_ekf_navsat.launch.py
+
+# Terminal 3 — Nav2 outdoor navigation
+ros2 launch trov navigation_outdoor.launch.py
+```
+
+Integration of these into a single automated outdoor launch script is planned.
 
 ---
 
@@ -366,8 +406,10 @@ Traversability segmentation lives in a separate workspace — see the segformer 
 | Collision beacon (LiDAR + GPIO) | ✅ Working |
 | Sensor health monitoring | ✅ Working |
 | Headlight + floodlight control | ✅ Working |
+| Beeper (drive command audio feedback) | ✅ Working |
+| XPT2046 touchscreen driver | ✅ Working |
 | Web UI + ROSBridge + API server | ✅ Working |
 | PTZ camera control (IMOU) | ✅ Working |
 | Dual camera streaming (MediaMTX) | ✅ Working |
 | Traversability segmentation (SegFormer) | 🔄 Running — Nav2 costmap integration planned |
-| Outdoor navigation | 📋 Planned |
+| Outdoor navigation (dual EKF + GPS) | 🔄 In progress — manual launch only |
