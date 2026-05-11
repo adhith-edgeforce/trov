@@ -64,6 +64,10 @@ add_executable(sensors_health_status
   src/sensor_health_status.cpp
 )
 
+add_executable(failsafe 
+  src/failsafe.cpp
+)
+
 ament_target_dependencies(obstacle_detector
   rclcpp
   sensor_msgs
@@ -98,6 +102,15 @@ ament_target_dependencies(hrtk_odom
   geometry_msgs
   tf2_ros
 )
+
+ament_target_dependencies(failsafe
+  rclcpp
+  geometry_msgs
+  nav_msgs
+  action_msgs
+  std_msgs
+)
+
 
 target_link_libraries(obstacle_detector
   ${PCL_LIBRARIES}
@@ -165,6 +178,10 @@ install(TARGETS rslidar_to_lio
 )
 
 install(TARGETS sensors_health_status
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS failsafe
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -8,7 +8,7 @@ def generate_launch_description():
   pkg_share = get_package_share_directory(package_name)
 
   robot_localization_params_file = os.path.join(
-    pkg_share, "config", "outdoor", "dual_ekf_navsat_params_claude.yaml")
+    pkg_share, "config", "outdoor", "dual_ekf_navsat_params_hybrid.yaml")
 
   # ── EKF1: odom→base_link ──────────────────────────────────────────────────
   # Fuses:

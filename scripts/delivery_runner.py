@@ -105,7 +105,7 @@ class DeliveryRunner(Node):
         self.declare_parameter('return_stabilize_sec',      8.0)
         self.declare_parameter('predeparture_delay_sec',    5.0)
         self.declare_parameter('beep_sound_path',           '/data/trov_ws/beep_cut.mp3')
-        self.declare_parameter('beep_volume',               20)
+        self.declare_parameter('beep_volume',               50)
         self.declare_parameter('routes_poll_interval',      5.0)
 
         self.waypoints_file       = self.get_parameter('waypoints_file').value

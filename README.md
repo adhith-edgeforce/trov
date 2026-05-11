@@ -155,6 +155,8 @@ Several C++ nodes handle physical hardware on the robot.
 
 **XPT2046 touchscreen driver** (`xpt2046_input.py`) is a standalone Python script that runs as the `xpt2046-touch.service` systemd service. It reads touch coordinates from an XPT2046 resistive touchscreen over SPI and injects them into the Linux input system via `uinput`, making the touchscreen appear as a standard input device to the OS. The calibration uses a degree-4 bivariate polynomial fit to map raw ADC coordinates to screen pixels on a 1024×600 display. Two stages of filtering are applied: a hardware median filter (8 raw readings per sample, median taken) to remove ADC noise, followed by a jump filter that rejects sudden large position changes unless confirmed by a second consecutive reading, and an exponential moving average for smooth cursor movement.
 
+**Failsafe** is a standalone cpp node, which monitors the odometry, localization and navigation running status. This node publishes the `cmd_vel_smoothed` topic to send the zero velocity when any one of the stack failed. Alos publishes the `error_code` for the specific stack failed. `0x00` - nominal, `0x0R` - when odometry fails, `0x0L` - when localization fails, `0x0N` - when navigation failed. 
+
 ### The API server
 
 The API server (`trov_api.py`) runs as `trov-api.service` on port 5000 using Flask served by Waitress with 8 worker threads. It is what the web UI calls to perform any operation that requires a shell command or system interaction.
@@ -194,7 +196,7 @@ The outdoor stack is launched separately from the indoor stack using `trov_outdo
 ros2 launch trov icp_odometry_outdoor.launch.py
 
 # Terminal 2 — Dual EKF + navsat transform
-ros2 launch trov dual_ekf_navsat.launch.py
+ros2 launch trov dual_ekf_navsat_hybrid.launch.py
 
 # Terminal 3 — Nav2 outdoor navigation
 ros2 launch trov navigation_outdoor.launch.py
@@ -206,7 +208,7 @@ Integration of these into a single automated outdoor launch script is planned.
 
 ## Full Startup
 
-Everything is managed by `trov_launch_files.sh`. On boot, `trov.service` runs it automatically. To start manually:
+Everything is managed by `trov_launch_files.sh` which is located in /home/nvidia/ directory. On boot, `trov.service` runs it automatically. To start manually:
 
 ```bash
 cd /data/trov_ws
