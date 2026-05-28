@@ -52,7 +52,7 @@ public:
         buf_xyzi_.reserve(200000 * 24);
 
         sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/points", rclcpp::SensorDataQoS(),
+            "/points", rclcpp::QoS(rclcpp::KeepLast(5)).reliable(),
             std::bind(&RslidarToLio::callback, this, std::placeholders::_1));
 
         // For lidarslam mapping

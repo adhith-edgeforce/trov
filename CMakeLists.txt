@@ -44,14 +44,6 @@ add_definitions(
 # ============================================
 # Obstacle Detector Node
 # ============================================
-add_executable(obstacle_detector 
-  src/obstacle_detector.cpp
-)
-
-add_executable(collision_beacon 
-  src/collision_beacon.cpp
-)
-
 add_executable(hrtk_odom 
   src/hrtk_mosaic_odom.cpp
 )
@@ -68,31 +60,11 @@ add_executable(failsafe
   src/failsafe.cpp
 )
 
-ament_target_dependencies(obstacle_detector
-  rclcpp
-  sensor_msgs
-  visualization_msgs
-  pcl_conversions
-)
-
-ament_target_dependencies(collision_beacon
-  rclcpp
-  sensor_msgs
-  pcl_conversions
-  visualization_msgs
-)
-
 ament_target_dependencies(sensors_health_status
   rclcpp
   sensor_msgs
   std_msgs
 )
-
-target_include_directories(collision_beacon PUBLIC
-  /opt/ros/humble/include/sensor_msgs
-)
-
-target_link_libraries(collision_beacon gpiod)
 
 ament_target_dependencies(hrtk_odom
   rclcpp
@@ -120,57 +92,9 @@ target_link_libraries(hrtk_odom
   ${PCL_LIBRARIES}
 )
 
-
-# ── executable ───────────────────────────────────────────────────────────────
-add_executable(pointcloud_downsampler_node
-  src/pointcloud_downsampler.cpp)
- 
-target_include_directories(pointcloud_downsampler_node PUBLIC
-  ${PCL_INCLUDE_DIRS})
- 
-target_link_libraries(pointcloud_downsampler_node
-  pcl_common
-  pcl_filters)
- 
-ament_target_dependencies(pointcloud_downsampler_node
-  rclcpp
-  sensor_msgs
-  pcl_conversions)
- 
-# ── install ──────────────────────────────────────────────────────────────────
-install(TARGETS pointcloud_downsampler_node
-  DESTINATION lib/${PROJECT_NAME})
-
-add_executable(trov_drive_bridge src/trov_drive_bridge.cpp)
-ament_target_dependencies(trov_drive_bridge rclcpp geometry_msgs mavros_msgs std_msgs)
-install(TARGETS trov_drive_bridge DESTINATION lib/${PROJECT_NAME})
-
-
-add_executable(bumper_filter_node src/bumper_filter_node.cpp)
-ament_target_dependencies(bumper_filter_node
-  rclcpp sensor_msgs tf2_ros tf2_sensor_msgs pcl_conversions)
-target_link_libraries(bumper_filter_node ${PCL_LIBRARIES})
-
-install(TARGETS bumper_filter_node DESTINATION lib/${PROJECT_NAME})
-
-
-# ============ BUILD EXECUTABLE ============
-add_executable(pointcloud_crop_filter src/pointcloud_crop_filter.cpp)
-
-ament_target_dependencies(pointcloud_crop_filter
-  rclcpp
-  sensor_msgs
-  visualization_msgs
-  pcl_conversions
-)
-
 ament_target_dependencies(rslidar_to_lio
   rclcpp
   sensor_msgs
-)
-
-target_link_libraries(pointcloud_crop_filter
-  ${PCL_LIBRARIES}
 )
 
 install(TARGETS rslidar_to_lio
@@ -217,17 +141,22 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
-  scripts/gps_frame_changer.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(PROGRAMS
   scripts/floodlight.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(PROGRAMS
   scripts/delivery_runner.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/outdoor_waypoints_recorder.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/outdoor_waypoints_follower.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

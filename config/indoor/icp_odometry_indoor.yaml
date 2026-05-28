@@ -4,7 +4,7 @@
 ###
 ### Data flow:
 ###   /points (PointCloud2, 15Hz)  ──► icp_odometry ──► /odom
-###   /imu/data (500Hz)            ──────────────────────────►  (used for motion guess)
+###   /imu/data (100Hz)            ──────────────────────────►  (used for motion guess)
 
 icp_odometry:
   ros__parameters:

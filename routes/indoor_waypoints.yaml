@@ -2628,3 +2628,99 @@ maps:
             z: 0.988553
             w: 0.150874
           yaw_deg: 162.64
+  demo_21_5:
+    routes:
+      L_route:
+        metadata:
+          total: 8
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 3.631
+            y: -2.9386
+            z: 0.013
+          orientation:
+            x: -0.000422
+            y: 0.000442
+            z: 0.945328
+            w: 0.326121
+          yaw_deg: 141.93
+        - index: 1
+          position:
+            x: 2.398
+            y: -2.0059
+            z: -0.0106
+          orientation:
+            x: -0.000928
+            y: -0.000816
+            z: 0.951404
+            w: 0.307943
+          yaw_deg: 144.13
+        - index: 2
+          position:
+            x: 1.1399
+            y: -1.1726
+            z: -0.0205
+          orientation:
+            x: -0.003553
+            y: -0.001465
+            z: 0.957202
+            w: 0.289394
+          yaw_deg: 146.36
+        - index: 3
+          position:
+            x: -0.3067
+            y: -0.6708
+            z: -0.0063
+          orientation:
+            x: 0.006648
+            y: 0.001129
+            z: 0.972646
+            w: -0.232195
+          yaw_deg: -153.15
+        - index: 4
+          position:
+            x: -1.5261
+            y: -1.7096
+            z: -0.0044
+          orientation:
+            x: 0.001269
+            y: 0.003241
+            z: 0.909168
+            w: -0.416416
+          yaw_deg: -130.78
+        - index: 5
+          position:
+            x: -2.621
+            y: -2.7897
+            z: -0.0147
+          orientation:
+            x: 0.002496
+            y: -0.001823
+            z: 0.896644
+            w: -0.442742
+          yaw_deg: -127.44
+        - index: 6
+          position:
+            x: -3.5371
+            y: -3.9877
+            z: -0.0113
+          orientation:
+            x: 0.001752
+            y: 0.003232
+            z: 0.866126
+            w: -0.499812
+          yaw_deg: -120.03
+        - index: 7
+          position:
+            x: -4.3855
+            y: -5.3869
+            z: -0.0254
+          orientation:
+            x: -0.00189
+            y: -0.001635
+            z: -0.860654
+            w: 0.509185
+          yaw_deg: -118.78
