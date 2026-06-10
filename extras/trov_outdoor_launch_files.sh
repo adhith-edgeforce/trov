@@ -3,19 +3,20 @@
 # TROV Workspace Launch Script
 # Launches (in order):
 #   1. RSLidar SDK
-#   2. WIT IMU
-#   3. rslidar_to_lio
-#   4. hrtk_odom
-#   5. MAVROS
-#   6. Drive bridge
-#   7. gps_frame_changer
+#   2. rslidar_to_lio
+#   3. WIT IMU
+#   4. MAVROS
+#   5. Drive bridge
+#   6. RealSense Camera
+#   7. Segformer Node
+#   8. ICP Odometry Outdoor
+#   9. Lidar Localization (Pinned)
+#  10. Outdoor Waypoint Recorder
+#  11. Outdoor Waypoint Follower
+#  12. Delivery Runner Outdoor
+#  13. Navigation Outdoor
+#  14. MediaMTX
 # ============================================================
-
-# NOTE: 'set -e' removed intentionally.
-# Previously, if drive_bridge exited with a non-zero code,
-# 'set -e' would abort the entire script before hrtk_odom
-# ever got launched. Individual node failures are now handled
-# explicitly inside wait_for_node().
 
 # ---------- Colors ----------
 RED='\033[0;31m'
@@ -30,7 +31,6 @@ log_warn()  { echo -e "${YELLOW}[WARN]  $(date '+%H:%M:%S') | $1${NC}"; }
 log_error() { echo -e "${RED}[ERROR] $(date '+%H:%M:%S') | $1${NC}"; }
 
 # ---------- Config ----------
-#WORKSPACE_DIR="$HOME/trov_ws"
 WORKSPACE_DIR="/data/trov_ws/"
 ROS2_SETUP="/opt/ros/humble/setup.bash"
 WS_SETUP="$WORKSPACE_DIR/install/setup.bash"
@@ -43,8 +43,10 @@ IMU_PORT="/dev/ttyUSB0"
 FCU_PORT="/dev/ttyACM0"
 FCU_BAUD="57600"
 
+MEDIAMTX_BIN="$HOME/mediamtx"
+
 # PIDs for cleanup
-declare -A NODE_PIDS   # associative: name → pid
+declare -A NODE_PIDS
 
 # ---------- Cleanup ----------
 cleanup() {
@@ -57,7 +59,6 @@ cleanup() {
             kill "$pid" 2>/dev/null || true
         fi
     done
-    # Give nodes 2s to die, then force kill
     sleep 2
     for name in "${!NODE_PIDS[@]}"; do
         pid="${NODE_PIDS[$name]}"
@@ -81,15 +82,11 @@ launch_node() {
     log_ok "$name started (PID $pid)"
 }
 
-# ---------- Helper: wait and check a node is still alive ----------
-# Second argument: wait_secs
-# Third argument (optional): "critical" (default) or "warn"
-#   - critical: abort entire script if node dies
-#   - warn:     log a warning but continue launching remaining nodes
+# ---------- Helper: wait and check ----------
 wait_for_node() {
     local name="$1"
     local wait_secs="$2"
-    local mode="${3:-critical}"   # default = critical
+    local mode="${3:-critical}"
     local pid="${NODE_PIDS[$name]}"
 
     log_info "Waiting ${wait_secs}s for $name to initialize..."
@@ -132,17 +129,13 @@ fi
 source "$WS_SETUP"
 log_ok "Workspace sourced."
 
-log_info "ROS_DISTRO     = $ROS_DISTRO"
-log_info "ROS_DOMAIN_ID  = ${ROS_DOMAIN_ID:-0 (default)}"
-
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI='<CycloneDDS><Domain><General><NetworkInterfaceAddress>eno1</NetworkInterfaceAddress></General></Domain></CycloneDDS>'
- 
+
 log_info "ROS_DISTRO         = $ROS_DISTRO"
 log_info "ROS_DOMAIN_ID      = ${ROS_DOMAIN_ID:-0 (default)}"
 log_info "RMW_IMPLEMENTATION = $RMW_IMPLEMENTATION"
 log_info "CYCLONEDDS_URI     = $CYCLONEDDS_URI"
- 
 
 # ---------- 3. Check LiDAR ----------
 echo ""
@@ -174,7 +167,6 @@ else
     log_warn "FCU port $FCU_PORT not found — MAVROS may fail."
     log_warn "Available ACM ports:"
     ls /dev/ttyACM* 2>/dev/null || echo "  (none)"
-    # Not a hard exit — operator may want to continue without drive
 fi
 
 # ============================================================
@@ -185,20 +177,22 @@ cd "$WORKSPACE_DIR"
 
 # ---------- 6. RSLidar SDK ----------
 launch_node "rslidar_sdk" \
+    env RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+    CYCLONEDDS_URI='<CycloneDDS><Domain><General><NetworkInterfaceAddress>eno1</NetworkInterfaceAddress></General></Domain></CycloneDDS>' \
     ros2 launch rslidar_sdk humble_start.py
 wait_for_node "rslidar_sdk" 5 "critical"
 
 # ---------- 7. rslidar_to_lio ----------
-#launch_node "rslidar_to_lio for autoware" \
-#    ros2 run trov rslidar_to_lio #--ros-args -r points_raw:=/sensing/lidar/top/pointcloud_raw
-#wait_for_node "rslidar_to_lio for autoware" 5 "critical"
+launch_node "rslidar_to_lio" \
+    ros2 run trov rslidar_to_lio
+wait_for_node "rslidar_to_lio" 5 "critical"
 
 # ---------- 8. WIT IMU ----------
 launch_node "wit_imu" \
     ros2 launch wit_ros2_imu rviz_and_imu.launch.py
 wait_for_node "wit_imu" 3 "critical"
 
-# ---------- 9. MAVROS (from home dir — no workspace dep) ----------
+# ---------- 9. MAVROS ----------
 echo ""
 echo -e "${CYAN}--- Starting MAVROS ---${NC}"
 echo ""
@@ -209,38 +203,112 @@ launch_node "mavros" \
 wait_for_node "mavros" 15 "critical"
 cd "$WORKSPACE_DIR"
 
+# ---------- 10. Drive Bridge ----------
 echo ""
 echo -e "${CYAN}--- Starting drive bridge ---${NC}"
 echo ""
-
-# ---------- 10. Drive Bridge ----------
-# Marked as "warn" so that if it fails, the script continues
-# and hrtk_odom still gets launched.
-# Depends on: MAVROS (/mavros/manual_control/send), Nav2 (/cmd_vel)
 launch_node "drive_bridge" \
-    ros2 run cpp_pubsub drive
-wait_for_node "drive_bridge" 3 "warn"   # <-- FIX: was "critical" (implicit), now non-fatal
+    ros2 run cpp_pubsub drive_outdoor
+wait_for_node "drive_bridge" 3 "warn"
 
-# ---------- 11. hrtk_odom ----------
+# ---------- 11. RealSense Camera ----------
+# Publishes:
+#   /camera/camera/color/image_raw       → segformer RGB input
+#   /camera/camera/depth/image_rect_raw  → segformer depth input
+#   /camera/camera/color/camera_info     → segformer intrinsics
+#   camera_link TF                       → Nav2 STVL layer
 echo ""
-echo -e "${CYAN}--- Starting hrtk_odom ---${NC}"
+echo -e "${CYAN}--- Starting RealSense Camera ---${NC}"
 echo ""
-# FIX: hrtk_odom is now explicitly reached regardless of drive_bridge status.
-# Previously, if drive_bridge failed and set -e was active, the script
-# would abort here. Now it always launches.
-log_info "About to launch hrtk_odom..."
-launch_node "hrtk_odom" \
-    ros2 run trov hrtk_odom
-wait_for_node "hrtk_odom" 5 "critical"
+launch_node "realsense_camera" \
+    ros2 launch realsense2_camera rs_launch.py
+wait_for_node "realsense_camera" 10 "warn"
 
-# ---------- 12. gps_frame_changer ----------
-#echo ""
-#echo -e "${CYAN}--- Starting gps_frame_changer ---${NC}"
-#echo ""
-#log_info "About to launch gps_frame_changer..."
-#launch_node "gps_frame_changer" \
-#    ros2 run trov gps_frame_changer.py
-#wait_for_node "gps_frame_changer" 5 "critical"
+# ---------- 12. Segformer Node ----------
+# Runs in its own virtual environment — cannot share the main ROS2 env
+# Publishes:
+#   /fusion_segmentation/traversability  → visualization
+#   /fusion_segmentation/semantic        → visualization
+#   /semantic_obstacle_points            → Nav2 STVL costmap input
+echo ""
+echo -e "${CYAN}--- Starting Segformer Node ---${NC}"
+echo ""
+launch_node "segformer" bash -c "
+    export LD_PRELOAD='/usr/local/lib/python3.10/dist-packages/torch/lib/libc10.so /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cpu.so /usr/local/lib/python3.10/dist-packages/torch/lib/libtorch_cuda.so'
+    export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    export CYCLONEDDS_URI='<CycloneDDS><Domain><General><NetworkInterfaceAddress>eno1</NetworkInterfaceAddress></General></Domain></CycloneDDS>'
+    cd /data/trov_ws
+    ros2 run segformer_cpp segformer_node
+"
+wait_for_node "segformer" 15 "warn"
+
+# ---------- 13. ICP Odometry Outdoor ----------
+echo ""
+echo -e "${CYAN}--- Starting ICP Odometry Outdoor ---${NC}"
+echo ""
+launch_node "icp_odometry" \
+    ros2 launch trov icp_odometry_outdoor.launch.py
+wait_for_node "icp_odometry" 10 "critical"
+
+# ---------- 14. Lidar Localization (Pinned) ----------
+echo ""
+echo -e "${CYAN}--- Starting Lidar Localization ---${NC}"
+echo ""
+launch_node "lidar_localization" \
+    ros2 launch trov outdoor_lidar_localization_pinned.launch.py
+wait_for_node "lidar_localization" 15 "critical"
+
+# ---------- 15. Outdoor Waypoint Recorder ----------
+# Non-critical: starts immediately but waits for lidar_localization to come up.
+# active_map stays None until localization is running; recorder retries every
+# map_retry_interval seconds automatically — it will NOT crash or exit.
+echo ""
+echo -e "${CYAN}--- Starting Outdoor Waypoint Recorder ---${NC}"
+echo ""
+launch_node "waypoint_recorder" \
+    ros2 run trov outdoor_waypoints_recorder.py
+wait_for_node "waypoint_recorder" 3 "warn"
+
+# ---------- 16. Outdoor Waypoint Follower ----------
+# Non-critical: starts immediately but blocks route execution until a map is
+# detected from lidar_localization. Retries every routes_poll_interval seconds
+# automatically — it will NOT crash or exit while map is unavailable.
+echo ""
+echo -e "${CYAN}--- Starting Outdoor Waypoint Follower ---${NC}"
+echo ""
+launch_node "waypoint_follower" \
+    ros2 run trov outdoor_waypoints_follower.py
+wait_for_node "waypoint_follower" 3 "warn"
+
+# ---------- 17. Delivery Runner Outdoor ----------
+echo ""
+echo -e "${CYAN}--- Starting Delivery Runner Outdoor ---${NC}"
+echo ""
+launch_node "delivery_runner" \
+    ros2 run trov delivery_runner_outdoor.py
+wait_for_node "delivery_runner" 5 "warn"
+
+# ---------- 18. Navigation Outdoor ----------
+echo ""
+echo -e "${CYAN}--- Starting Navigation Outdoor ---${NC}"
+echo ""
+launch_node "navigation_outdoor" \
+    ros2 launch trov navigation_outdoor.launch.py
+wait_for_node "navigation_outdoor" 15 "critical"
+
+# ---------- 19. MediaMTX ----------
+echo ""
+echo -e "${CYAN}--- Starting MediaMTX ---${NC}"
+echo ""
+if [ ! -f "$MEDIAMTX_BIN" ]; then
+    log_warn "mediamtx binary not found at $MEDIAMTX_BIN — skipping."
+else
+    cd "$HOME"
+    launch_node "mediamtx" \
+        "$MEDIAMTX_BIN"
+    wait_for_node "mediamtx" 3 "warn"
+    cd "$WORKSPACE_DIR"
+fi
 
 # ============================================================
 echo ""
@@ -254,24 +322,12 @@ for name in "${!NODE_PIDS[@]}"; do
     if kill -0 "$pid" 2>/dev/null; then
         log_ok "  $name → PID $pid"
     else
-        log_error "  $name → PID $pid (DEAD)"
+        log_warn "  $name → PID $pid (DEAD)"
     fi
 done
 echo ""
 log_info "Press Ctrl+C to stop all nodes."
 echo ""
-
-# ---------- Monitor: restart dead nodes (optional watchdog) ----------
-# Uncomment below to auto-restart critical nodes if they die
-# while true; do
-#     sleep 10
-#     for name in "${!NODE_PIDS[@]}"; do
-#         pid="${NODE_PIDS[$name]}"
-#         if ! kill -0 "$pid" 2>/dev/null; then
-#             log_warn "Node '$name' (PID $pid) died — manual restart needed"
-#         fi
-#     done
-# done
 
 # ---------- Wait ----------
 wait
