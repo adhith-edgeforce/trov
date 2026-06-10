@@ -19,7 +19,7 @@ amcl:
     # Only run particle filter update after this much motion.
     # Increasing prevents AMCL from updating when people occlude the scan
     # while the robot is stationary/slow on the return trip.
-    update_min_d: 0.25          # was 0.25 — only update after 0.5m translation
+    update_min_d: 0.15          # was 0.25 — only update after 0.5m translation
     update_min_a: 0.2          # was 0.2  — only update after 0.5rad rotation
 
     # ── Particle filter ───────────────────────────────────────────────────
@@ -27,7 +27,7 @@ amcl:
     max_particles: 8000  #5000      # was 2000 — more particles = more robust
     pf_err: 0.05
     pf_z: 0.99
-    resample_interval: 3       # was 1 — resample every 3 updates, not every 1
+    resample_interval: 2       # was 3 — resample every 3 updates, not every 1
                                # prevents filter from snapping to wrong hypothesis
 
     # ── Recovery (disabled) ───────────────────────────────────────────────
@@ -38,7 +38,7 @@ amcl:
 
     # ── Laser model ───────────────────────────────────────────────────────
     laser_model_type: "likelihood_field"
-    laser_max_range: 100.0
+    laser_max_range: 20.0
     laser_min_range: -1.0
     max_beams: 60
 
@@ -65,7 +65,7 @@ amcl:
 
     # ── TF / timing ───────────────────────────────────────────────────────
     tf_broadcast: true
-    transform_tolerance: 1.0
+    transform_tolerance: 0.8 #1.0
     save_pose_rate: 0.5
 
     # ── Initial pose ──────────────────────────────────────────────────────

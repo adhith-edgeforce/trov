@@ -1,28 +1,25 @@
 /**:
   ros__parameters:
-    transform_tolerance: 1.0
+    transform_tolerance: 2.0
     registration_method: NDT_OMP
     score_threshold: 8.0
-    ndt_resolution: 2.0
+    ndt_resolution: 2.0  #2.0
     ndt_step_size: 0.1
-    ndt_num_threads: 4 #8
-    ndt_max_iterations: 35
+    ndt_num_threads: 6 #8
+    ndt_max_iterations: 35 #35
     gicp_corr_randomness: 20
     gicp_max_correspondence_distance: 2.0
     vgicp_voxel_resolution: 1.0
     transform_epsilon: 0.01
-    voxel_leaf_size: 0.2
+    voxel_leaf_size: 0.2 #0.2 
     enable_scan_voxel_filter: true
-    scan_max_range: 15.0
-    scan_min_range: 1.0
+    scan_max_range: 15.0 #15.0
+    scan_min_range: 0.5
     scan_period: 0.1
     cloud_queue_depth: 1
-    min_scan_interval_sec: 0.15 #0.0
+    min_scan_interval_sec: 0.05 #0.0
     use_pcd_map: true
-    #map_path: "/data/trov_ws/map_straight.pcd"
-    #map_path: "/data/trov_ws/outdoor_from_shutter_to_gate.pcd"
-    map_path: "/data/trov_ws/map_outdoor.pcd"
-    #map_path: "/data/trov_ws/map.pcd"
+    map_path: "/data/trov_ws/map_indoor.pcd"
     set_initial_pose: false
     initial_pose_x: 1.090 #0.0
     initial_pose_y: -0.379 #0.0
@@ -42,7 +39,7 @@
     enable_debug: false
     predict_pose_from_previous_delta: true
     enable_local_map_crop: true
-    local_map_radius: 50.0
+    local_map_radius: 20.0   #50
     local_map_min_points: 100
     reject_above_score_threshold: true
     enable_borderline_seed_rejection_gate: false
@@ -64,3 +61,4 @@
     base_frame_id: base_link
     enable_timer_publishing: false
     pose_publish_frequency: 30.0
+    use_sim_time: false

@@ -29,7 +29,7 @@ controller_server:
     controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3 #0.1
+    failure_tolerance: 2.5 #0.1
     transform_tolerance: 1.0
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["general_goal_checker"]
@@ -44,13 +44,13 @@ controller_server:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.85 
-      yaw_goal_tolerance: 1.57 #0.25 #3.14
+      yaw_goal_tolerance: 1.0 #1.57 
     
     FollowPath: 
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       desired_linear_vel: 0.5
-      lookahead_dist: 2.0 # not being used when use_velocity_scaled_lookahead_dist: true
-      min_lookahead_dist: 1.0 #1.6
+      lookahead_dist: 1.5 #2.0 # not being used when use_velocity_scaled_lookahead_dist: true
+      min_lookahead_dist: 1.5 #1.0 #1.6
       max_lookahead_dist: 2.5
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 0.5
@@ -72,7 +72,7 @@ controller_server:
       use_rotate_to_heading: true
       allow_reversing: false
       rotate_to_heading_min_angle: 0.4
-      max_angular_accel: 4.0
+      max_angular_accel: 3.5 #14.0
       max_robot_pose_search_dist: 10.0
       min_distance_to_obstacle: 1.6 #1.0 #2.5 #1.6
 
@@ -171,32 +171,32 @@ local_costmap:
       use_sim_time: False
       rolling_window: true
       transform_tolerance: 1.0 #0.5
-      width: 10
-      height: 10
+      width: 10 #10
+      height: 10 #10
       resolution: 0.05
       plugins: ["obstacle_layer", "inflation_layer"]
       observation_sources: scan
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.0
-        inflation_radius: 1.0
+        inflation_radius: 0.5 #1.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
         observation_sources: scan
         scan:
           topic: /scan
-          # sensor_frame: "lidar_link"
+          sensor_frame: lidar_link
           inf_is_valid: true
           clearing: true
           marking: true
           data_type: "LaserScan"
           raytrace_max_range: 15.0
-          raytrace_min_range: 0.3 #1.0
+          raytrace_min_range: 0.5 #1.0
           obstacle_max_range: 15.0
-          obstacle_min_range: 0.3 #1.0
+          obstacle_min_range: 0.5 #1.0
           max_obstacle_height: 2.0
-          min_obstacle_height: 0.1
+          min_obstacle_height: -0.2
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
@@ -248,11 +248,11 @@ global_costmap:
           marking: true
           data_type: "LaserScan"
           raytrace_max_range: 15.0
-          raytrace_min_range: 1.0
+          raytrace_min_range: 0.5
           obstacle_max_range: 15.0
-          obstacle_min_range: 1.0
+          obstacle_min_range: 0.5
           max_obstacle_height: 2.0
-          min_obstacle_height: 0.1
+          min_obstacle_height: -0.2
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         enabled: true
@@ -260,17 +260,17 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.0
-        inflation_radius: 1.0
+        inflation_radius: 0.8 #1.0
       always_send_full_costmap: true
 
 planner_server:
   ros__parameters:
     use_sim_time: False
-    expected_planner_frequency: 20.0
+    expected_planner_frequency: 12.0
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 1.0 #0.5
+      tolerance: 2.0 #1.0 #0.5
       use_astar: false
       allow_unknown: true
 
@@ -305,27 +305,6 @@ behavior_server:
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
     behavior_plugins: ["wait"]
-    # spin:
-    #   plugin: "nav2_behaviors/Spin"
-    #   simulate_ahead_time: 2.0
-    #   enable_stamped_cmd_vel: false
-    #   max_rotational_vel: 0.6
-    #   min_rotational_vel: 0.3
-    #   rotational_acc_lim: 1.8
-    # backup:
-    #   plugin: "nav2_behaviors/BackUp"
-    #   simulate_ahead_time: 2.0
-    #   enable_stamped_cmd_vel: false
-    #   acceleration_limit: 2.5
-    #   deceleration_limit: -2.5
-    #   minimum_speed: 0.10
-    # drive_on_heading:
-    #   plugin: "nav2_behaviors/DriveOnHeading"
-    #   simulate_ahead_time: 2.0
-    #   enable_stamped_cmd_vel: false
-    #   acceleration_limit: 2.5
-    #   deceleration_limit: -2.5
-    #   minimum_speed: 0.10
     wait:
       plugin: "nav2_behaviors/Wait"
 
@@ -339,12 +318,12 @@ waypoint_follower:
     wait_at_waypoint:
       plugin: "nav2_waypoint_follower::WaitAtWaypoint"
       enabled: True
-      waypoint_pause_duration: 1000
+      waypoint_pause_duration: 200 #1000
 
 velocity_smoother:
   ros__parameters:
     input_topic: "cmd_vel"
-    output_topic: "cmd_vel_raw"
+    output_topic: "cmd_vel_smoothed"
     use_sim_time: False
     smoothing_frequency: 20.0
     scale_velocities: False
@@ -373,22 +352,6 @@ collision_monitor:
     use_realtime_priority: false
     enable_stamped_cmd_vel: false
     polygons: ["PolygonStop", "PolygonSlow"]
-    # polygons: ["FootprintApproach"]
-    # observation_sources: ["scan"]
-    # FootprintApproach:
-    #   type: "polygon"
-    #   action_type: "approach"
-    #   footprint_topic: "/local_costmap/published_footprint"
-    #   time_before_collision: 2.0
-    #   simulation_time_step: 0.1
-    #   min_points: 6
-    #   visualize: False
-    # scan:
-    #   type: scan
-    #   topic: "scan"
-    #   min_height: 0.05
-    #   max_height: 2.0
-    #   enabled: True
     PolygonStop:
       type: "polygon"
       points: [1.3, 1.0, 1.3, -1.0, -1.0, -1.0, -1.0, 1.0] 

@@ -72,6 +72,7 @@ icp_odometry:
     Reg/Force3DoF: "false"
 
     # ── Timing (these are normal ROS params — no quotes needed) ──────────
-    wait_for_transform: 0.1
+    wait_for_transform: 1.0 #0.1
     expected_update_rate: 0.0
     publish_null_when_lost: false #true
+    #tf_delay: 0.05  

@@ -83,11 +83,6 @@ ament_target_dependencies(failsafe
   std_msgs
 )
 
-
-target_link_libraries(obstacle_detector
-  ${PCL_LIBRARIES}
-)
-
 target_link_libraries(hrtk_odom
   ${PCL_LIBRARIES}
 )
@@ -106,12 +101,6 @@ install(TARGETS sensors_health_status
 )
 
 install(TARGETS failsafe
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-# ============ INSTALL EXECUTABLE ============
-install(TARGETS
-  pointcloud_crop_filter
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -151,6 +140,11 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
+  scripts/delivery_runner_outdoor.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
   scripts/outdoor_waypoints_recorder.py
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -173,16 +167,6 @@ install(TARGETS beeper DESTINATION lib/${PROJECT_NAME})
 # ============================================
 # Install targets
 # ============================================
-install(TARGETS
-  obstacle_detector
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(TARGETS
-  collision_beacon
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 install(TARGETS
   hrtk_odom
   DESTINATION lib/${PROJECT_NAME}
@@ -236,12 +220,6 @@ install(DIRECTORY
 
 install(DIRECTORY
   behavior_trees
-  DESTINATION share/${PROJECT_NAME}/
-)
-
-# Install graphs directory
-install(DIRECTORY
-  graphs
   DESTINATION share/${PROJECT_NAME}/
 )
 

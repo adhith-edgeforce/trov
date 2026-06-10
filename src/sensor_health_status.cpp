@@ -17,12 +17,10 @@
  *   /sensor_health/gps               [std_msgs/Bool]  true = healthy
  *   /sensor_health/all               [std_msgs/Bool]  true = ALL healthy
  *
- * A sensor is healthy if a message arrived within its timeout window.
- * A sensor that has NEVER been seen publishes false.
- *
- * UI integration:
- *   Subscribe to any of the four topics above — each is a plain Bool.
- *   No parsing needed; just read .data.
+ * Log behaviour:
+ *   - On state change (healthy→unhealthy or back): logs immediately
+ *   - While unhealthy: reminder log every 30s (not every 0.5s)
+ *   - While all healthy: info log every 60s so you know node is alive
  */
 
 #include <chrono>
@@ -40,48 +38,46 @@ using namespace std::chrono_literals;
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
-// To promote these to ROS2 parameters later, use declare_parameter() in the
-// constructor and get_parameter() to read them back.
+static constexpr double TIMEOUT_LIDAR_SEC  = 1.0;
+static constexpr double TIMEOUT_IMU_SEC    = 0.5;
+static constexpr double TIMEOUT_GPS_SEC    = 1.0;
+static constexpr double PUBLISH_RATE_HZ    = 2.0;   // topic publish rate — unchanged
 
-static constexpr double TIMEOUT_LIDAR_SEC = 1.0;   // /points
-static constexpr double TIMEOUT_IMU_SEC   = 0.5;   // /imu/data
-static constexpr double TIMEOUT_GPS_SEC   = 1.0;   // /mavros/global_position/global
-static constexpr double PUBLISH_RATE_HZ   = 2.0;   // how often to publish health topics
+// Log throttle intervals (milliseconds)
+static constexpr int    LOG_UNHEALTHY_MS   = 30000;  // reminder when staying unhealthy: every 30s
+static constexpr int    LOG_ALL_HEALTHY_MS = 60000;  // heartbeat when all OK: every 60s
 // ---------------------------------------------------------------------------
 
 
 // ---------------------------------------------------------------------------
-// SensorState — tracks health for a single topic
+// SensorState
 // ---------------------------------------------------------------------------
 struct SensorState
 {
-  std::string display_name;   // used in log messages
-  std::string topic;          // used in log messages
+  std::string display_name;
+  std::string topic;
   double      timeout_sec;
 
   bool          ever_received{false};
   rclcpp::Time  last_received;
+  bool          last_healthy{true};   // tracks previous state for change detection
 
-  // Call this inside every subscriber callback
   void on_message(const rclcpp::Time & now)
   {
     last_received = now;
     ever_received = true;
   }
 
-  // Returns true if the sensor is currently healthy
   bool is_healthy(const rclcpp::Time & now) const
   {
-    if (!ever_received) {
-      return false;
-    }
+    if (!ever_received) return false;
     return (now - last_received).seconds() <= timeout_sec;
   }
 };
 
 
 // ---------------------------------------------------------------------------
-// SensorHealthMonitor — the ROS2 node
+// SensorHealthMonitor
 // ---------------------------------------------------------------------------
 class SensorHealthMonitor : public rclcpp::Node
 {
@@ -89,9 +85,6 @@ public:
   SensorHealthMonitor()
   : Node("sensor_health_monitor")
   {
-    // ------------------------------------------------------------------
-    // Initialise sensor states
-    // ------------------------------------------------------------------
     lidar_state_.display_name = "LiDAR";
     lidar_state_.topic        = "/points";
     lidar_state_.timeout_sec  = TIMEOUT_LIDAR_SEC;
@@ -104,46 +97,32 @@ public:
     gps_state_.topic          = "/mavros/global_position/global";
     gps_state_.timeout_sec    = TIMEOUT_GPS_SEC;
 
-    // ------------------------------------------------------------------
-    // Subscribers
-    // ------------------------------------------------------------------
-    // SensorDataQoS = best-effort, small history — standard for sensor streams.
-    // GPS uses reliable QoS because MAVROS typically publishes that way.
-    // Mismatched QoS causes silent "no data" — keep these as-is unless you
-    // know your publisher uses a different policy.
     auto sensor_qos = rclcpp::SensorDataQoS();
 
     lidar_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       "/points", sensor_qos,
-      [this](sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+      [this](sensor_msgs::msg::PointCloud2::SharedPtr) {
         lidar_state_.on_message(this->now());
       });
 
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       "/imu/data", sensor_qos,
-      [this](sensor_msgs::msg::Imu::SharedPtr msg) {
+      [this](sensor_msgs::msg::Imu::SharedPtr) {
         imu_state_.on_message(this->now());
       });
 
     gps_sub_ = this->create_subscription<sensor_msgs::msg::NavSatFix>(
       "/mavros/global_position/global", rclcpp::QoS(10),
-      [this](sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+      [this](sensor_msgs::msg::NavSatFix::SharedPtr) {
         gps_state_.on_message(this->now());
       });
 
-    // ------------------------------------------------------------------
-    // Publishers — one per sensor + one overall
-    // ------------------------------------------------------------------
     auto qos = rclcpp::QoS(10);
-
     lidar_pub_ = this->create_publisher<std_msgs::msg::Bool>("/sensor_health/lidar", qos);
     imu_pub_   = this->create_publisher<std_msgs::msg::Bool>("/sensor_health/imu",   qos);
     gps_pub_   = this->create_publisher<std_msgs::msg::Bool>("/sensor_health/gps",   qos);
     all_pub_   = this->create_publisher<std_msgs::msg::Bool>("/sensor_health/all",   qos);
 
-    // ------------------------------------------------------------------
-    // Periodic publish timer
-    // ------------------------------------------------------------------
     auto period = std::chrono::duration<double>(1.0 / PUBLISH_RATE_HZ);
     publish_timer_ = this->create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
@@ -157,14 +136,13 @@ public:
       "    /sensor_health/imu    (timeout: %.1fs)\n"
       "    /sensor_health/gps    (timeout: %.1fs)\n"
       "    /sensor_health/all\n"
-      "  Publish rate: %.1f Hz",
-      TIMEOUT_LIDAR_SEC, TIMEOUT_IMU_SEC, TIMEOUT_GPS_SEC, PUBLISH_RATE_HZ);
+      "  Publish rate: %.1f Hz\n"
+      "  Log on state change + reminder every %ds if unhealthy",
+      TIMEOUT_LIDAR_SEC, TIMEOUT_IMU_SEC, TIMEOUT_GPS_SEC,
+      PUBLISH_RATE_HZ, LOG_UNHEALTHY_MS / 1000);
   }
 
 private:
-  // ------------------------------------------------------------------
-  // publish_health — runs at PUBLISH_RATE_HZ
-  // ------------------------------------------------------------------
   void publish_health()
   {
     auto now = this->now();
@@ -179,12 +157,14 @@ private:
     publish_bool(gps_pub_,   gps_ok);
     publish_bool(all_pub_,   all_ok);
 
-    log_status(lidar_ok, imu_ok, gps_ok);
+    log_status(lidar_ok, imu_ok, gps_ok, all_ok);
+
+    // Update previous state for next tick
+    lidar_state_.last_healthy = lidar_ok;
+    imu_state_.last_healthy   = imu_ok;
+    gps_state_.last_healthy   = gps_ok;
   }
 
-  // ------------------------------------------------------------------
-  // publish_bool — tiny helper to avoid repeating msg construction
-  // ------------------------------------------------------------------
   void publish_bool(
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr & pub,
     bool value)
@@ -194,43 +174,53 @@ private:
     pub->publish(msg);
   }
 
-  // ------------------------------------------------------------------
-  // log_status — throttled terminal output
-  // ------------------------------------------------------------------
-  void log_status(bool lidar_ok, bool imu_ok, bool gps_ok)
+  // ── Log only on state change + throttled reminders ──────────────────────
+  void log_status(bool lidar_ok, bool imu_ok, bool gps_ok, bool all_ok)
   {
-    // When all healthy: info log every 5 s so you know the node is alive
-    if (lidar_ok && imu_ok && gps_ok) {
-      RCLCPP_INFO_THROTTLE(
-        this->get_logger(), *this->get_clock(), 5000,
-        "[ALL HEALTHY] LiDAR=OK | IMU=OK | GPS=OK");
-      return;
-    }
+    // ── State-change logs — immediate, no throttle ────────────────────────
+    log_sensor_change(lidar_state_, lidar_ok, "LiDAR");
+    log_sensor_change(imu_state_,   imu_ok,   "IMU");
+    log_sensor_change(gps_state_,   gps_ok,   "GPS");
 
-    // When something is wrong: warn every 2 s per unhealthy sensor
+    // ── Throttled reminder while something stays unhealthy ────────────────
     if (!lidar_ok) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), LOG_UNHEALTHY_MS,
         "[UNHEALTHY] LiDAR — no data on %s within %.1fs",
         lidar_state_.topic.c_str(), lidar_state_.timeout_sec);
     }
     if (!imu_ok) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), LOG_UNHEALTHY_MS,
         "[UNHEALTHY] IMU — no data on %s within %.1fs",
         imu_state_.topic.c_str(), imu_state_.timeout_sec);
     }
     if (!gps_ok) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 2000,
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), LOG_UNHEALTHY_MS,
         "[UNHEALTHY] GPS — no data on %s within %.1fs",
         gps_state_.topic.c_str(), gps_state_.timeout_sec);
     }
+
+    // ── Heartbeat when all healthy ────────────────────────────────────────
+    if (all_ok) {
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), LOG_ALL_HEALTHY_MS,
+        "[ALL HEALTHY] LiDAR=OK | IMU=OK | GPS=OK");
+    }
   }
 
-  // ------------------------------------------------------------------
-  // Member variables
-  // ------------------------------------------------------------------
+  // Log immediately on transition (healthy→unhealthy or unhealthy→healthy)
+  void log_sensor_change(const SensorState & state, bool now_healthy, const char * name)
+  {
+    if (now_healthy == state.last_healthy) return;  // no change, skip
+
+    if (!now_healthy) {
+      RCLCPP_WARN(this->get_logger(),
+        "[SENSOR LOST] %s — no data on %s within %.1fs",
+        name, state.topic.c_str(), state.timeout_sec);
+    } else {
+      RCLCPP_INFO(this->get_logger(),
+        "[SENSOR RECOVERED] %s is healthy again", name);
+    }
+  }
+
   SensorState lidar_state_;
   SensorState imu_state_;
   SensorState gps_state_;

@@ -151,7 +151,8 @@ private:
 
         // Publish /points_raw (lidar_link frame, original timestamp)
         sensor_msgs::msg::PointCloud2 out_raw;
-        out_raw.header      = msg->header;
+        //out_raw.header      = msg->header;
+        out_raw.header.stamp= now; 
         out_raw.header.frame_id = "lidar_link";
         out_raw.height      = 1;
         out_raw.width       = valid;

@@ -17,15 +17,13 @@ static constexpr uint8_t REG_CONVERT   = 0x00;
 static constexpr uint8_t REG_CONFIG    = 0x01;
 
 // Config bytes: single-shot, AIN0 vs GND, PGA ±2.048 V, 128 SPS
-// OS=1  MUX=100(AIN0)  PGA=010(±2.048V)  MODE=1(single-shot)
-// DR=100(128SPS)  COMP defaults
-static constexpr uint8_t CFG_HI        = 0xC4;   // 1100 0100
-static constexpr uint8_t CFG_LO        = 0x83;   // 1000 0011
-static constexpr float   PGA_RANGE     = 2.048f;  // must match PGA bits above
+static constexpr uint8_t CFG_HI        = 0xC4;
+static constexpr uint8_t CFG_LO        = 0x83;
+static constexpr float   PGA_RANGE     = 2.048f;
 
 // ── Battery calibration ──────────────────────────────────────────────────────
-static constexpr float   V_MIN         = 1.37f;    // voltage at   0 % battery
-static constexpr float   V_MAX         = 1.49f;    // voltage at 100 % battery — tune once confirmed
+static constexpr float   V_MIN         = 1.37f;
+static constexpr float   V_MAX         = 1.49f;
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
 static constexpr float   THR_LOW       = 30.0f;
@@ -34,11 +32,14 @@ static constexpr float   THR_CRITICAL  = 15.0f;
 // ── Publish rate ─────────────────────────────────────────────────────────────
 static constexpr double  PUBLISH_HZ    = 1.0;
 
+// ── Log every N callbacks (1 Hz publish → every 10s at N=10) ─────────────────
+static constexpr int     LOG_EVERY_N   = 10;
+
 class BatteryMonitorNode : public rclcpp::Node
 {
 public:
   BatteryMonitorNode()
-  : Node("battery_monitor")
+  : Node("battery_monitor"), log_counter_(0), last_status_(""), last_percent_(0.0f)
   {
     // Open I2C bus
     std::string bus_path = "/dev/i2c-" + std::to_string(I2C_BUS);
@@ -56,6 +57,7 @@ public:
 
     RCLCPP_INFO(get_logger(), "ADS1115 opened on /dev/i2c-%d @ 0x%02X", I2C_BUS, ADS_ADDR);
     RCLCPP_INFO(get_logger(), "Calibration: V_MIN=%.3f V  V_MAX=%.3f V", V_MIN, V_MAX);
+    RCLCPP_INFO(get_logger(), "Publishing at %.0f Hz, logging every %ds", PUBLISH_HZ, LOG_EVERY_N);
 
     // Publishers
     pub_percent_ = create_publisher<std_msgs::msg::Float32>("/trov/battery/percent", 10);
@@ -78,15 +80,13 @@ private:
   // ── Read one conversion from ADS1115 ───────────────────────────────────────
   float read_voltage()
   {
-    // Write config register — triggers a single-shot conversion
     uint8_t config[3] = { REG_CONFIG, CFG_HI, CFG_LO };
     if (write(i2c_fd_, config, 3) != 3) {
       throw std::runtime_error("I2C config write failed");
     }
 
-    // Poll OS bit (bit 15 of config) until conversion is ready
     for (int attempt = 0; attempt < 20; ++attempt) {
-      usleep(8000);  // 8 ms — safe for 128 SPS
+      usleep(8000);
 
       uint8_t reg = REG_CONFIG;
       if (write(i2c_fd_, &reg, 1) != 1) {
@@ -96,18 +96,16 @@ private:
       if (read(i2c_fd_, buf, 2) != 2) {
         throw std::runtime_error("I2C config read failed");
       }
-      if (buf[0] & 0x80) {  // OS bit high = conversion done
+      if (buf[0] & 0x80) {
         break;
       }
     }
 
-    // Point to conversion register
     uint8_t reg = REG_CONVERT;
     if (write(i2c_fd_, &reg, 1) != 1) {
       throw std::runtime_error("I2C register select failed");
     }
 
-    // Read 2 bytes
     uint8_t raw[2] = {};
     if (read(i2c_fd_, raw, 2) != 2) {
       throw std::runtime_error("I2C conversion read failed");
@@ -146,6 +144,7 @@ private:
       status = "OK";
     }
 
+    // Publish every tick (keeps topic fresh for subscribers)
     auto msg_pct = std_msgs::msg::Float32();
     msg_pct.data = percent;
     pub_percent_->publish(msg_pct);
@@ -154,11 +153,42 @@ private:
     msg_st.data = status;
     pub_status_->publish(msg_st);
 
-    RCLCPP_INFO(get_logger(), "Battery: %.1f%%  (%.4f V)  [%s]",
-                percent, voltage, status.c_str());
+    // ── Always log on status change (LOW / CRITICAL) ──────────────────────
+    bool status_changed = (status != last_status_);
+    bool is_warning     = (status == "LOW" || status == "CRITICAL");
+
+    if (status_changed) {
+      if (is_warning) {
+        RCLCPP_WARN(get_logger(), "Battery status changed: [%s] %.1f%%  (%.4f V)",
+                    status.c_str(), percent, voltage);
+      } else {
+        RCLCPP_INFO(get_logger(), "Battery status changed: [%s] %.1f%%  (%.4f V)",
+                    status.c_str(), percent, voltage);
+      }
+      last_status_ = status;
+    }
+
+    // ── Periodic log every LOG_EVERY_N seconds ────────────────────────────
+    log_counter_++;
+    if (log_counter_ >= LOG_EVERY_N) {
+      log_counter_ = 0;
+      if (is_warning) {
+        RCLCPP_WARN(get_logger(), "Battery: %.1f%%  (%.4f V)  [%s]",
+                    percent, voltage, status.c_str());
+      } else {
+        RCLCPP_INFO(get_logger(), "Battery: %.1f%%  (%.4f V)  [%s]",
+                    percent, voltage, status.c_str());
+      }
+    }
+
+    last_percent_ = percent;
   }
 
-  int i2c_fd_{-1};
+  int   i2c_fd_{-1};
+  int   log_counter_;
+  float last_percent_;
+  std::string last_status_;
+
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr pub_percent_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr  pub_status_;
   rclcpp::TimerBase::SharedPtr timer_;

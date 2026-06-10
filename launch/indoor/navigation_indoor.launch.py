@@ -13,7 +13,7 @@ def generate_launch_description():
     lifecycle_nodes_nav2 = [
       'controller_server', 'planner_server', 'behavior_server',
       'velocity_smoother', 'bt_navigator', 'waypoint_follower',
-      'collision_monitor', #'smoother_server',   # smoother last
+      'collision_monitor',# 'smoother_server',   # smoother last
     ]
 
     # Declare launch arguments
@@ -113,7 +113,7 @@ def generate_launch_description():
 
     # Change the timer delay:
     nav2_lifecycle_manager_delayed = TimerAction(
-        period=30.0,   # ← was 5.0
+        period=10.0,   # ← was 5.0
         actions=[nav2_lifecycle_manager]
     )
 
@@ -125,7 +125,7 @@ def generate_launch_description():
     ld.add_action(declare_autostart_cmd)
 
     ld.add_action(nav2_controller)
-    # ld.add_action(nav2_smoother)
+    #ld.add_action(nav2_smoother)
     ld.add_action(nav2_planner)
     ld.add_action(nav2_behaviors)
     ld.add_action(nav2_bt_navigator)

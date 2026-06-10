@@ -165,7 +165,7 @@ class IndoorWaypointRecorder(Node):
         self.declare_parameter('robot_frame',         'base_link')
         self.declare_parameter('map_server_node',     'map_server')
         self.declare_parameter('map_detect_timeout',  10.0)
-        self.declare_parameter('map_retry_interval',  5.0)   # FIX: retry period
+        self.declare_parameter('map_retry_interval',  5.0)
         self.declare_parameter('start_topic',         'waypoint_recorder/start')
         self.declare_parameter('stop_topic',          'waypoint_recorder/stop')
         self.declare_parameter('set_route_topic',     'waypoint_recorder/set_route')
@@ -205,6 +205,11 @@ class IndoorWaypointRecorder(Node):
         # ── Active map ────────────────────────────────────────────────────────
         self.active_map: str | None = None
 
+        # ── Internal flag: a map detection call is currently in-flight ────────
+        # Prevents the retry timer from firing a second request while one is
+        # already pending (which would cause duplicate callbacks).
+        self._map_detect_pending: bool = False
+
         # ── TF ────────────────────────────────────────────────────────────────
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -224,29 +229,28 @@ class IndoorWaypointRecorder(Node):
         self._pub_routes = self.create_publisher(String, routes_topic, latched)
 
         # ── Subscribers ───────────────────────────────────────────────────────
-        self.create_subscription(String, set_route_topic,       self._set_route_cb,              10)
-        self.create_subscription(Empty,  start_topic,           self._start_cb,                  10)
-        self.create_subscription(Empty,  stop_topic,            self._stop_cb,                   10)
-        self.create_subscription(Empty,  clear_routes_topic,    self._clear_routes_cb,           10)
-        self.create_subscription(Empty,  start_map_select_topic,self._start_map_select_cb,       10)
-        self.create_subscription(Point,  add_point_topic,       self._add_point_cb,              10)
-        self.create_subscription(Empty,  gen_interp_topic,      self._generate_interpolated_cb,  10)
-        self.create_subscription(Empty,  cancel_map_sel_topic,  self._cancel_map_select_cb,      10)
+        self.create_subscription(String, set_route_topic,        self._set_route_cb,             10)
+        self.create_subscription(Empty,  start_topic,            self._start_cb,                 10)
+        self.create_subscription(Empty,  stop_topic,             self._stop_cb,                  10)
+        self.create_subscription(Empty,  clear_routes_topic,     self._clear_routes_cb,          10)
+        self.create_subscription(Empty,  start_map_select_topic, self._start_map_select_cb,      10)
+        self.create_subscription(Point,  add_point_topic,        self._add_point_cb,             10)
+        self.create_subscription(Empty,  gen_interp_topic,       self._generate_interpolated_cb, 10)
+        self.create_subscription(Empty,  cancel_map_sel_topic,   self._cancel_map_select_cb,     10)
 
         # ── TF poll timer at 10 Hz (drive mode recording) ─────────────────────
         self.timer = self.create_timer(0.1, self._timer_callback)
 
-        # ── FIX: Map detection retry timer ────────────────────────────────────
-        # The original node had no mechanism to recover if map_server wasn't
-        # ready when this node started. This timer retries _detect_active_map()
-        # every map_retry_interval seconds until it succeeds, then cancels itself.
+        # ── Map detection retry timer ─────────────────────────────────────────
+        # Fires every map_retry_interval seconds. On each tick it checks whether
+        # active_map is already known; if not, it fires an async service call.
+        # Cancels itself once active_map is successfully set.
         self._map_retry_timer = self.create_timer(
             self._map_retry_interval, self._map_retry_cb
         )
-        # ─────────────────────────────────────────────────────────────────────
 
-        # ── Detect active map at startup ──────────────────────────────────────
-        self._detect_active_map()
+        # ── Kick off the first (async) map detection attempt ──────────────────
+        self._request_map_param()
 
         # ── Publish initial state ─────────────────────────────────────────────
         self._publish_available_routes()
@@ -254,7 +258,7 @@ class IndoorWaypointRecorder(Node):
 
         self.get_logger().info(
             f'\n[IndoorWaypointRecorder] Ready\n'
-            f'  Active map   : {self.active_map}\n'
+            f'  Active map   : {self.active_map} (detecting asynchronously…)\n'
             f'  Active route : {self.route_name}\n'
             f'  Frames       : {self.robot_frame} → {self.map_frame}\n'
             f'  Gap          : {self.dist_threshold} m\n'
@@ -263,66 +267,66 @@ class IndoorWaypointRecorder(Node):
         )
 
     # =========================================================================
-    # Map detection
+    # Map detection — async, non-blocking
     # =========================================================================
 
-    def _detect_active_map(self):
+    def _request_map_param(self):
         """
-        Query map_server for its yaml_filename parameter.
-        Retries until map_detect_timeout seconds have elapsed.
-        On success: sets self.active_map and cancels the retry timer.
-        On failure: leaves self.active_map as None — retry timer will keep trying.
+        Fire a single async GetParameters call to map_server.
+        Returns immediately; the result is handled in _on_map_param_response.
+
+        If map_server is not yet available, the call is simply dropped — the
+        retry timer will call this method again after map_retry_interval seconds.
+
+        Guards against duplicate in-flight requests with _map_detect_pending.
         """
+        if self._map_detect_pending:
+            self.get_logger().debug(
+                '[MapDetect] Request already in flight — skipping.'
+            )
+            return
+
         srv_name = f'/{self._map_server_node}/get_parameters'
         client   = self.create_client(GetParameters, srv_name)
 
-        self.get_logger().info(
-            f'[MapDetect] Contacting {srv_name} '
-            f'(timeout: {self._map_detect_timeout}s)...'
-        )
-
-        deadline = time.time() + self._map_detect_timeout
-
-        while not client.wait_for_service(timeout_sec=1.0):
-            if time.time() > deadline:
-                self.get_logger().error(
-                    f'[MapDetect] ✗ map_server not available after '
-                    f'{self._map_detect_timeout}s. '
-                    f'Will retry every {self._map_retry_interval}s automatically.'
-                )
-                return
+        if not client.service_is_ready():
             self.get_logger().warn(
-                '[MapDetect] map_server not ready — retrying...',
-                throttle_duration_sec=2.0
+                f'[MapDetect] {srv_name} not ready yet — '
+                f'will retry in {self._map_retry_interval}s.'
             )
+            return
 
         request       = GetParameters.Request()
         request.names = ['yaml_filename']
-        future        = client.call_async(request)
 
-        remaining = max(deadline - time.time(), 2.0)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=remaining)
+        self._map_detect_pending = True
+        future = client.call_async(request)
+        future.add_done_callback(self._on_map_param_response)
 
-        if not future.done():
-            self.get_logger().error(
-                '[MapDetect] ✗ Parameter request timed out. '
-                f'Will retry every {self._map_retry_interval}s automatically.'
-            )
-            return
+        self.get_logger().info(
+            f'[MapDetect] Async request sent to {srv_name}.'
+        )
+
+    def _on_map_param_response(self, future):
+        """
+        Callback invoked by the executor when the GetParameters future resolves.
+        Runs on the node's executor thread — safe to update node state directly.
+        """
+        self._map_detect_pending = False
 
         try:
             response = future.result()
         except Exception as e:
             self.get_logger().error(
                 f'[MapDetect] ✗ Service call exception: {e}. '
-                f'Will retry every {self._map_retry_interval}s automatically.'
+                f'Will retry in {self._map_retry_interval}s.'
             )
             return
 
         if not response.values:
             self.get_logger().error(
                 '[MapDetect] ✗ map_server returned no yaml_filename. '
-                f'Will retry every {self._map_retry_interval}s automatically.'
+                f'Will retry in {self._map_retry_interval}s.'
             )
             return
 
@@ -330,44 +334,41 @@ class IndoorWaypointRecorder(Node):
         if not yaml_path:
             self.get_logger().error(
                 '[MapDetect] ✗ yaml_filename is empty. '
-                f'Will retry every {self._map_retry_interval}s automatically.'
+                f'Will retry in {self._map_retry_interval}s.'
             )
             return
 
         self.active_map = _map_stem_from_yaml_path(yaml_path)
         self.get_logger().info(
-            f'[MapDetect] ✓ Active map: "{self.active_map}"'
+            f'[MapDetect] ✓ Active map detected: "{self.active_map}"'
         )
 
+        # Publish updated state now that the map is known
+        self._publish_available_routes()
+        self._publish_status()
+
+        # Cancel the retry timer — no longer needed
+        self._map_retry_timer.cancel()
+        self.get_logger().info('[MapDetect] Retry timer cancelled.')
+
     # =========================================================================
-    # FIX: Map detection retry timer callback
+    # Map detection retry timer callback
     # =========================================================================
 
     def _map_retry_cb(self):
         """
         Fires every map_retry_interval seconds.
-        If active_map is already set, cancels itself — job done.
-        If active_map is still None, retries _detect_active_map().
-        On success, publishes routes and status, then cancels itself.
+        If active_map is already set, cancels itself.
+        Otherwise issues another async request to map_server.
         """
         if self.active_map is not None:
-            # Already have the map — cancel this timer, it's no longer needed
             self._map_retry_timer.cancel()
             return
 
         self.get_logger().info(
             '[MapRetry] active_map not set — retrying map detection...'
         )
-        self._detect_active_map()
-
-        if self.active_map is not None:
-            self.get_logger().info(
-                f'[MapRetry] Map detection recovered: "{self.active_map}". '
-                f'Stopping retry timer.'
-            )
-            self._publish_available_routes()
-            self._publish_status()
-            self._map_retry_timer.cancel()
+        self._request_map_param()
 
     # =========================================================================
     # Subscriber callbacks — drive mode

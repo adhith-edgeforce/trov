@@ -21,21 +21,26 @@ def generate_launch_description():
     #   /points      → /scan_cloud   (icp_odometry's expected input topic)
     #   /imu/data    → /imu/data     (no change needed, shown for clarity)
   icp_odometry = Node(
-      package='rtabmap_odom',
-      executable='icp_odometry',
-      name='icp_odometry',
-      output='screen',
-      parameters=[icp_params, {'use_sim_time': False}],
-      remappings=[
-        ('/scan', '/null_scan'),
-        ('scan_cloud', '/points'),   # your gz_bridge publishes to /points
-        ('imu',        '/imu/data'), # your gz_bridge publishes to /imu/data
-        ('odom',       '/odom'),     # output goes to /odom → feeds EKF
-      ],
-      arguments=['--ros-args', '--log-level', 'icp_odometry:=WARN']
-      # Uncomment to see verbose rtabmap logs (useful for debugging):
-      # arguments=['--ros-args', '--log-level', 'debug']
-  )
+    package='rtabmap_odom',
+    executable='icp_odometry',
+    name='icp_odometry',
+    prefix='taskset -c 6',  # <- pin to core 6
+    output='screen',
+    parameters=[
+        {
+          'use_sim_time': False,
+          'subscribe_scan': False,       # disable LaserScan subscription
+          'subscribe_scan_cloud': True,  # enable PointCloud2 subscription
+        },
+        icp_params
+    ],
+    remappings=[
+        ('scan_cloud', '/points'),
+        ('imu', '/imu/data'),
+        ('odom', '/odom'),
+    ],
+    arguments=['--ros-args', '--log-level', 'icp_odometry:=WARN']
+)
 
   return LaunchDescription([
     icp_odometry

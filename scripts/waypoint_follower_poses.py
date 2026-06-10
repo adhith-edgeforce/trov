@@ -177,7 +177,7 @@ class IndoorRouteFollower(Node):
         self.declare_parameter('frame_id',             'map')
         self.declare_parameter('loop',                 False)
         self.declare_parameter('map_server_node',      'map_server')
-        self.declare_parameter('map_detect_timeout',   10.0)
+        self.declare_parameter('map_detect_timeout',   50.0)
         self.declare_parameter('routes_poll_interval', 5.0)
         self.declare_parameter('start_topic',          'route_follower/start')
         self.declare_parameter('stop_topic',           'route_follower/stop')

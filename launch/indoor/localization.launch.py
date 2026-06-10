@@ -14,7 +14,7 @@ def generate_launch_description():
     declare_map_name_cmd = DeclareLaunchArgument(
         'map_name',
         #default_value='adibatla_indoor_box',
-        default_value='failure2',
+        default_value='pre_meerut',
         description='Map file name without .yaml extension (e.g. indoor3, testin1)'
     )
     declare_use_sim_time_cmd = DeclareLaunchArgument(
@@ -77,8 +77,8 @@ def generate_launch_description():
             'angle_max':        1.57,
             'angle_increment':  0.00873,   # ~1 degree resolution
             'scan_time':        0.1,
-            'range_min':        1.0,
-            'range_max':        30.0,
+            'range_min':        0.5,
+            'range_max':        15.0,
             'use_inf':          True,
             'concurrency_level': 1,
         }],

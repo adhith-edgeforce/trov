@@ -15,7 +15,7 @@ def generate_launch_description():
   lifecycle_nodes_nav2 = [
     'controller_server', 'smoother_server', 'planner_server',
     'behavior_server', 'velocity_smoother', 'bt_navigator', 
-    'waypoint_follower', 'collision_monitor'
+    'waypoint_follower'#, 'collision_monitor'
   ]
   
   # Declare launch arguments
@@ -118,7 +118,7 @@ def generate_launch_description():
   ld.add_action(nav2_bt_navigator)
   ld.add_action(nav2_waypoint_follower)
   ld.add_action(nav2_velocity_smoother)
-  ld.add_action(nav2_collision_monitor)
+  #ld.add_action(nav2_collision_monitor)
   ld.add_action(nav2_lifecycle_nodes_manager)
 
   return ld
