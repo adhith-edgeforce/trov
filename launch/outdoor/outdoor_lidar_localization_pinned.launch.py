@@ -5,11 +5,11 @@ def generate_launch_description():
     return LaunchDescription([
         ExecuteProcess(
             cmd=[
-                'taskset', '-c', '7',        # ← PIN TO CORE 7
+                'taskset', '-c', '4,5,6,7',       
                 'ros2', 'launch',
                 'lidar_localization_ros2',
                 'nav2_lidar_localization.launch.py',
-                'cloud_topic:=/points_raw',
+                'cloud_topic:=/points',
                 'imu_topic:=/imu/data',
                 #'odom_topic:=/odom',
                 'lidar_frame_id:=lidar_link',

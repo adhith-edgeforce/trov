@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    transform_tolerance: 1.0
+    #transform_tolerance: 10.0
     registration_method: NDT_OMP
     score_threshold: 8.0
     ndt_resolution: 2.0
@@ -21,7 +21,7 @@
     use_pcd_map: true
     #map_path: "/data/trov_ws/map_straight.pcd"
     #map_path: "/data/trov_ws/outdoor_from_shutter_to_gate.pcd"
-    map_path: "/data/trov_ws/map_outdoor.pcd"
+    map_path: "/data/trov_ws/map_indoor.pcd"
     #map_path: "/data/trov_ws/map.pcd"
     set_initial_pose: false
     initial_pose_x: 1.090 #0.0
@@ -62,5 +62,5 @@
     global_frame_id: map
     odom_frame_id: odom
     base_frame_id: base_link
-    enable_timer_publishing: false
-    pose_publish_frequency: 30.0
+    enable_timer_publishing: false #true
+    pose_publish_frequency: 10.0

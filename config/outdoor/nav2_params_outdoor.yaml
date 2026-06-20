@@ -23,7 +23,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: False
-    controller_frequency: 10.0
+    controller_frequency: 6.0
     min_x_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.01
     failure_tolerance: 10.0
@@ -142,8 +142,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 1.0
-      publish_frequency: 1.0
+      update_frequency: 5.0
+      publish_frequency: 5.0
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: False
@@ -198,7 +198,7 @@ smoother_server:
     costmap_topic: global_costmap/costmap_raw
     footprint_topic: global_costmap/published_footprint
     robot_base_frame: "base_link"
-    transform_tolerance: 1.0
+    transform_tolerance: 2.0
     smoother_plugins: ["simple_smoother"]
     simple_smoother:
       plugin: "nav2_smoother::SimpleSmoother"
@@ -216,7 +216,7 @@ behavior_server:
     local_frame: odom
     global_frame: map
     robot_base_frame: base_link
-    transform_tolerance: 0.12
+    transform_tolerance: 2.0 #0.12
     use_sim_time: False
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
@@ -229,6 +229,7 @@ behavior_server:
 waypoint_follower:
   ros__parameters:
     use_sim_time: False
+    transform_tolerance: 2.0
     loop_rate: 20
     stop_on_failure: true
     waypoint_task_executor_plugin: "wait_at_waypoint"
@@ -243,6 +244,7 @@ velocity_smoother:
     input_topic: /cmd_vel
     output_topic: /cmd_vel_smoothed
     use_sim_time: False
+    transform_tolerance: 2.0
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"

@@ -27,12 +27,12 @@ def generate_launch_description():
     prefix='taskset -c 6',  # <- pin to core 6
     output='screen',
     parameters=[
+        icp_params,
         {
-          'use_sim_time': False,
-          'subscribe_scan': False,       # disable LaserScan subscription
-          'subscribe_scan_cloud': True,  # enable PointCloud2 subscription
-        },
-        icp_params
+            'use_sim_time': False,
+            'subscribe_scan': False,       # disable LaserScan subscription
+            'subscribe_scan_cloud': True,  # enable PointCloud2 subscription
+        }
     ],
     remappings=[
         ('scan_cloud', '/points'),
