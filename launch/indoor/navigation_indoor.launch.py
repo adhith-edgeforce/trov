@@ -85,7 +85,7 @@ def generate_launch_description():
         executable='collision_monitor',
         name='collision_monitor',
         output='screen',
-        parameters=[nav2_params_file, {'use_sim_time': False}],
+        parameters=[nav2_params_file, {'use_sim_time': False}, {'state_topic': 'collision_monitor_state'}],
     )
 
     # ── Lifecycle Manager ────────────────────────────────────────────────────

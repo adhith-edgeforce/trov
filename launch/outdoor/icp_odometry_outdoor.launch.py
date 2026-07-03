@@ -24,7 +24,7 @@ def generate_launch_description():
     package='rtabmap_odom',
     executable='icp_odometry',
     name='icp_odometry',
-    prefix='taskset -c 6',  # <- pin to core 6
+    #prefix='taskset -c 6',  # <- pin to core 6
     output='screen',
     parameters=[
         icp_params,
