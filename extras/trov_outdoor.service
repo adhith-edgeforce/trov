@@ -1,18 +1,15 @@
 [Unit]
-Description=TROV Full Stack Launch
+Description=TROV Outdoor Full Stack Launch
 After=network-online.target systemd-udevd.service
 Wants=network-online.target
-
 # Wait for IMU USB port
 After=dev-ttyUSB0.device
 Requires=dev-ttyUSB0.device
-
 # Wait for Pixhawk USB port
 After=dev-ttyACM0.device
 Requires=dev-ttyACM0.device
-
-# Never run indoor + outdoor at once - starting otudoor stops this, and vice versa
-Conflicts=trov_outdoor.service
+# Never run indoor + outdoor at once — starting this stops the indoor stack
+Conflicts=trov.service
 
 [Service]
 Type=simple
@@ -20,23 +17,16 @@ User=nvidia
 Group=nvidia
 Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
-ExecStartPre=/bin/bash -c 'echo indoor > /home/nvidia/.trov_environment'
-ExecStart=/bin/bash /home/nvidia/trov_launch_files.sh
-
-# Auto-start on boot — will wait for hardware above before starting
+ExecStart=/bin/bash /home/nvidia/trov_outdoor_launch_files.sh
+# Started on demand by the API switch — do NOT enable for boot (indoor is default)
 Restart=no
-
 # Give it enough time to shut down cleanly (all the pkill cleanup)
 TimeoutStopSec=30
-
-# Allow the script to run sudo systemctl commands if needed
-# (not needed now but safe to have)
 TimeoutStartSec=120
-
 # Logging — journald captures everything automatically
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=trov
+SyslogIdentifier=trov_outdoor
 
 [Install]
 WantedBy=multi-user.target

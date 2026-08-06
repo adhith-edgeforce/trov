@@ -1,0 +1,14 @@
+[Unit]
+Description=Auto-connect Sony SRS-XB100
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=oneshot
+User=nvidia
+ExecStartPre=/bin/sleep 10
+ExecStart=/usr/bin/bluetoothctl connect A8:E6:E8:79:3C:B1
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

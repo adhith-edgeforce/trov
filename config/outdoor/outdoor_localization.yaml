@@ -21,8 +21,9 @@
     use_pcd_map: true
     #map_path: "/data/trov_ws/map_straight.pcd"
     #map_path: "/data/trov_ws/outdoor_from_shutter_to_gate.pcd"
-    #map_path: "/data/trov_ws/map_outdoor.pcd"
-    map_path: "/data/trov_ws/map_left_right.pcd"
+    map_path: "/data/trov_ws/pcd_maps/map_outdoor.pcd"
+    #map_path: "/data/trov_ws/map_left_right.pcd"
+    #map_path: "/data/trov_ws/mrsam_outdoor.pcd"
     #map_path: "/home/nvidia/map.pcd"
     set_initial_pose: false
     initial_pose_x: 1.090 #0.0

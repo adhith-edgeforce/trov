@@ -38,7 +38,7 @@ def generate_launch_description():
         'angle_increment': 0.00436,
         'scan_time': 0.1,
         'range_min': 0.5,
-        'range_max': 15.0,
+        'range_max': 25.0,
         'use_inf': False,
       }],
       remappings=[('cloud_in', '/points'), ('scan', '/scan')],
@@ -63,3 +63,6 @@ def generate_launch_description():
     start_async_slam_toolbox_node,
     pointcloud_to_laserscan,
   ])
+
+
+#[icp_odometry-1] [ERROR] [1783498734.519980600] [icp_odometry]: icp_odometry is already receiving clouds on "/points", but also just received a scan on "/scan". Both subscribers cannot be used at the same time! Disabling scan subscriber.

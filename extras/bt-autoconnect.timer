@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Sony SRS-XB100 connection every 30 seconds
+
+[Timer]
+OnBootSec=15
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -32,8 +32,7 @@ class GPIOPin32Node(Node):
 
     def destroy_node(self):
         GPIO.output(self.PIN, GPIO.LOW)
-        GPIO.cleanup()
-        self.get_logger().info("GPIO cleaned up")
+        self.get_logger().info("GPIO left LOW")
         super().destroy_node()
 
 def main(args=None):

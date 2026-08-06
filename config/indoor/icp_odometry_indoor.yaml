@@ -31,11 +31,11 @@ icp_odometry:
 
     # ── Point cloud filtering ─────────────────────────────────────────────
     scan_range_min: 0.8 #1.5          # ignore returns closer than 1.5m (robot body)
-    scan_range_max: 15.0         # matches your URDF lidar <max> range
-    scan_voxel_size: 0.3         # voxel downsampling in metres
+    scan_range_max: 25.0         # matches your URDF lidar <max> range
+    scan_voxel_size: 0.4 #0.3         # voxel downsampling in metres
                                  # 0.05 default is too fine for 16-beam lidar
                                  # 0.3 is a good balance for warehouse environments
-    scan_normal_k: 10            # neighbours used to estimate surface normals
+    scan_normal_k: 8 #10            # neighbours used to estimate surface normals
                                  # higher = smoother normals, more CPU
     scan_cloud_max_points: 0     # 0 = no limit
 
@@ -43,28 +43,28 @@ icp_odometry:
     # IMPORTANT: All Icp/, Odom/, OdomF2M/, Reg/ parameters must be
     # passed as STRINGS — this is how rtabmap reads its internal parameters.
     Icp/Strategy: "1"                    # 0=libpointmatcher, 1=point-to-plane
-    Icp/Iterations: "30"                 # max ICP iterations per scan
-    Icp/MaxCorrespondenceDistance: "1.0" #"1.5" # metres — max point match distance
+    Icp/Iterations: "15" #"30"                 # max ICP iterations per scan
+    Icp/MaxCorrespondenceDistance: "0.7" #"1.0" #"1.5" # metres — max point match distance
     Icp/VoxelSize: "0.3"                 # must match scan_voxel_size
     Icp/PointToPlane: "true"             # point-to-plane more accurate
     Icp/PointToPlaneK: "10"             # neighbours for plane normal
     Icp/Epsilon: "0.001"                 # convergence threshold
-    Icp/CorrespondenceRatio: "0.15" #"0.3" #"0.7"       # require 70% point correspondences
-    Icp/OutlierRatio: "0.9" #"0.85"             # reject top 15% outliers
+    Icp/CorrespondenceRatio: "0.3" #"0.15" #"0.3" #"0.7"       # require 70% point correspondences
+    Icp/OutlierRatio: "0.85" #"0.9" #"0.85"             # reject top 15% outliers
     Icp/MaxRotation: "0.8" #"1.5"              # radians — reject if rotation > this
     Icp/MaxTranslation: "0.8" #"2.0"           # metres — reject if translation > this
     Icp/Force4DoF: "false"              # keep false — EKF handles 2D constraint
 
-    Odom/Strategy: "0"           # 0=Frame-to-Map (F2M) — more stable
+    Odom/Strategy: "1"           # 0=Frame-to-Map (F2M) — more stable
     Odom/GuessMotion: "true"     # use IMU to pre-guess motion between scans
     Odom/GuessSmoothingDelay: "0.1"
     Odom/KeyFrameThr: "0.3"
     Odom/ScanKeyFrameThr: "0.9"
     Odom/FillInfoData: "false"   # true only for debugging
 
-    OdomF2M/ScanMaxSize: "20000"
+    OdomF2M/ScanMaxSize: "10000" #"20000"
     OdomF2M/ScanSubtractRadius: "0.3"
-    OdomF2M/MaxSize: "2000" #this line did not exist , part of experiment . the one below this too
+    OdomF2M/MaxSize: "1000" #"2000" #this line did not exist , part of experiment . the one below this too
 
     Odom/ResetCountdown: "1"     # allow reset after 1 failed frame
                               # instead of staying permanently lost

@@ -1,43 +1,10 @@
 #!/usr/bin/env python3
 """
-delivery_runner.py  (outdoor variant)
+delivery_runner.py
 Package : trov
-Place at : trov_ws/src/trov/scripts/delivery_runner_outdoor.py
+Place at : trov_ws/src/trov/scripts/delivery_runner.py
 
 Standalone delivery mission executor for the T-ROV UGV.
-
-Changes from indoor/2D version:
-  - Map detection queries /lidar_localization (map_path parameter)
-    instead of /map_server (yaml_filename parameter).
-    Map name is derived from the PCD filename stem.
-  - _routes_poll_cb retries _detect_active_map() when active_map is None,
-    giving the node self-healing behaviour.
-  - Default waypoints_file updated to outdoor_waypoints.yaml.
-  - map_param_name parameter added so the queried parameter name can be
-    overridden from the launch file without touching this file.
-  - Outdoor waypoints keep their recorded Z.
-
-Control topics:
-    /delivery/start (std_msgs/String) — begin a mission for the named route.
-    /delivery/stop  (std_msgs/Empty)  — cancel navigation immediately and stop.
-
-auto_return parameter:
-    False (default) : single out-and-back — WP0 -> WPN, wait, WPN -> WP0, IDLE.
-    True            : forever loop — WP0 -> WPN -> WP0 -> WPN -> ... until
-                      /delivery/stop is published. Beacon + beep stay ON the
-                      whole time; a wait of return_stabilize_sec (default 8 s)
-                      is taken at each endpoint (WPN and WP0) before the next leg.
-
-resume_from_nearest parameter (default True):
-    On /delivery/start the first leg begins from the waypoint nearest the
-    robot, in the direction it was travelling when last stopped (OUTBOUND →
-    forward to WPN, RETURNING → back to WP0), then falls into the normal
-    full WP0↔WPN loop. When the robot is already home this is just WP0.
-    Set False to always start from WP0.
-
-NOTE: the /delivery/unloaded handshake and the pin32 arrival "flashlight" have
-      been retired. The unloaded subscriber/callback are left commented out
-      below for reference only.
 """
 
 import copy
@@ -62,7 +29,7 @@ from nav2_msgs.action import ComputePathThroughPoses, FollowPath
 from nav2_msgs.srv import ClearEntireCostmap
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Empty, String
+from std_msgs.msg import Bool, Empty, String
 import tf2_ros
 
 from rcl_interfaces.srv import GetParameters
@@ -80,12 +47,8 @@ except ImportError:
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _map_stem_from_path(map_path: str) -> str:
-    """
-    '/full/path/to/adibatla_outdoor.pcd' → 'adibatla_outdoor'
-    Works for any extension (.pcd, .yaml, etc.)
-    """
-    return os.path.splitext(os.path.basename(map_path))[0]
+def _map_stem_from_yaml_path(yaml_path: str) -> str:
+    return os.path.splitext(os.path.basename(yaml_path))[0]
 
 
 def dist2d(ax: float, ay: float, bx: float, by: float) -> float:
@@ -128,12 +91,15 @@ class DeliveryRunner(Node):
         # ── Parameters ────────────────────────────────────────────────────────
         self.declare_parameter(
             'waypoints_file',
-            os.path.expanduser('/data/trov_ws/src/trov/routes/outdoor_waypoints.yaml')
+            os.path.expanduser('/data/trov_ws/src/trov/routes/indoor_waypoints.yaml')
         )
         self.declare_parameter('frame_id',                  'map')
-        self.declare_parameter('map_server_node',           'lidar_localization')
-        self.declare_parameter('map_param_name',            'map_path')
+        self.declare_parameter('map_server_node',           'map_server')
         self.declare_parameter('map_detect_timeout',        10.0)
+        self.declare_parameter('arrival_pulses',            3)
+        self.declare_parameter('arrival_pulse_on_sec',      3.0)
+        self.declare_parameter('arrival_pulse_off_sec',     3.0)
+        self.declare_parameter('departure_beacon_sec',      5.0)
         self.declare_parameter('gpio_chip_path',            '/dev/gpiochip1')
         self.declare_parameter('gpio_line',                 9)
         self.declare_parameter('return_stabilize_sec',      8.0)
@@ -141,25 +107,22 @@ class DeliveryRunner(Node):
         self.declare_parameter('beep_sound_path',           '/data/trov_ws/beep_cut.mp3')
         self.declare_parameter('beep_volume',               50)
         self.declare_parameter('routes_poll_interval',      5.0)
-        # ── Continuous-loop mode ──────────────────────────────────────────────
-        self.declare_parameter('auto_return',               False)
-        # ── Resume from nearest waypoint (direction-aware) ────────────────────
-        self.declare_parameter('resume_from_nearest',       True)
 
-        self.waypoints_file        = self.get_parameter('waypoints_file').value
-        self.frame_id              = self.get_parameter('frame_id').value
-        self._map_server_node      = self.get_parameter('map_server_node').value
-        self._map_param_name       = self.get_parameter('map_param_name').value
-        self._map_detect_timeout   = self.get_parameter('map_detect_timeout').value
-        self._gpio_chip_path       = self.get_parameter('gpio_chip_path').value
-        self._gpio_line_num        = self.get_parameter('gpio_line').value
-        self._return_stabilize     = self.get_parameter('return_stabilize_sec').value
-        self._predeparture_delay   = self.get_parameter('predeparture_delay_sec').value
-        self._beep_sound_path      = self.get_parameter('beep_sound_path').value
-        self._beep_volume          = self.get_parameter('beep_volume').value
+        self.waypoints_file       = self.get_parameter('waypoints_file').value
+        self.frame_id             = self.get_parameter('frame_id').value
+        self._map_server_node     = self.get_parameter('map_server_node').value
+        self._map_detect_timeout  = self.get_parameter('map_detect_timeout').value
+        self._arrival_pulses      = self.get_parameter('arrival_pulses').value
+        self._pulse_on            = self.get_parameter('arrival_pulse_on_sec').value
+        self._pulse_off           = self.get_parameter('arrival_pulse_off_sec').value
+        self._departure_secs      = self.get_parameter('departure_beacon_sec').value
+        self._gpio_chip_path      = self.get_parameter('gpio_chip_path').value
+        self._gpio_line_num       = self.get_parameter('gpio_line').value
+        self._return_stabilize    = self.get_parameter('return_stabilize_sec').value
+        self._predeparture_delay  = self.get_parameter('predeparture_delay_sec').value
+        self._beep_sound_path     = self.get_parameter('beep_sound_path').value
+        self._beep_volume         = self.get_parameter('beep_volume').value
         self._routes_poll_interval = self.get_parameter('routes_poll_interval').value
-        self._auto_return          = self.get_parameter('auto_return').value
-        self._resume_from_nearest  = self.get_parameter('resume_from_nearest').value
 
         # ── Active map ────────────────────────────────────────────────────────
         self.active_map: str | None = None
@@ -194,22 +157,21 @@ class DeliveryRunner(Node):
         self._state          = State.IDLE
         self._state_lock     = threading.Lock()
         self._route_name     = ''
-        # Retained only for the retired /delivery/unloaded handshake (disabled).
         self._unloaded_event = threading.Event()
-        # Stop signal for the current mission / auto-return loop.
-        self._stop_event     = threading.Event()
-        # Which leg (OUTBOUND/RETURNING) was active when the last /delivery/stop
-        # fired — used for direction-aware resume. None = no memory.
-        self._interrupted_leg = None
 
         self._active_goal_handle = None
         self._mission_thread     = None
         self._outbound_poses: list = []
 
-        # ── Cached route list ─────────────────────────────────────────────────
+        # ── Cached route list — used to detect changes and avoid noisy publishes
         self._last_published_routes: list = []
 
-        # ── GPIO16 persistent line-holder (the steady beacon light) ───────────
+        # ── GPIO16 persistent line-holder ─────────────────────────────────────
+        #
+        # One background thread owns the gpiod line for the node's full
+        # lifetime.  _gpio16_high_event set → HIGH, cleared → LOW.
+        # All callers use _gpio16_set(True/False) only.
+        #
         self._gpio16_ok         = self._check_gpio16()
         self._gpio16_high_event = threading.Event()
         self._gpio16_stop_event = threading.Event()
@@ -218,7 +180,12 @@ class DeliveryRunner(Node):
         )
         self._gpio16_thread.start()
 
-        # ── Beep loop thread ──────────────────────────────────────────────────
+        # ── Beep loop thread ─────────────────────────────────────────────────
+        #
+        # Mirrors the beacon: set _beep_active_event → continuous looping
+        # play until the event is cleared.  Uses the sox `play` command,
+        # same as the retired C++ node.
+        #
         self._beep_active_event = threading.Event()
         self._beep_stop_event   = threading.Event()
         self._beep_thread       = threading.Thread(
@@ -232,25 +199,17 @@ class DeliveryRunner(Node):
         self._pub_routes    = self.create_publisher(String, '/delivery/available_routes', latched)
         self._pub_full_path = self.create_publisher(Path,   '/delivery/full_path',        latched)
         self._pub_rem_path  = self.create_publisher(Path,   '/delivery/remaining_path',   latched)
+        self._pub_pin32     = self.create_publisher(Bool,   'gpio_pin32_control',         10)
 
         # ── Subscribers ───────────────────────────────────────────────────────
         self.create_subscription(
-            String, '/delivery/start',
-            self._start_cb, 10,
+            String, '/delivery/go',
+            self._go_cb, 10,
             callback_group=self._sub_group
         )
-        # ── /delivery/unloaded — RETIRED (commented out, kept for reference) ──
-        # The unload handshake has been removed from the mission flow. Uncomment
-        # this subscriber (and the _unloaded_cb method further below) to restore.
-        # self.create_subscription(
-        #     Empty, '/delivery/unloaded',
-        #     self._unloaded_cb, 10,
-        #     callback_group=self._sub_group
-        # )
-        # ── stop the current mission / auto-return loop ───────────────────────
         self.create_subscription(
-            Empty, '/delivery/stop',
-            self._stop_cb, 10,
+            Empty, '/delivery/unloaded',
+            self._unloaded_cb, 10,
             callback_group=self._sub_group
         )
 
@@ -262,7 +221,6 @@ class DeliveryRunner(Node):
         self._publish_status()
 
         # ── Poll YAML for new routes every N seconds ──────────────────────────
-        # Also retries map detection if it failed at startup (active_map is None)
         self.create_timer(
             self._routes_poll_interval,
             self._routes_poll_cb,
@@ -273,21 +231,19 @@ class DeliveryRunner(Node):
             f'\n[DeliveryRunner] Ready\n'
             f'  Active map          : {self.active_map}\n'
             f'  Waypoints file      : {self.waypoints_file}\n'
-            f'  Loc node            : /{self._map_server_node} '
-            f'(param: {self._map_param_name})\n'
             f'  Routes poll         : every {self._routes_poll_interval}s\n'
-            f'  auto_return (LOOP)  : {self._auto_return}\n'
-            f'  resume_from_nearest : {self._resume_from_nearest}\n'
             f'  Pre-departure delay : {self._predeparture_delay}s\n'
-            f'  Endpoint wait       : {self._return_stabilize}s (at WPN and WP0)\n'
+            f'  Arrival pulses      : {self._arrival_pulses} × '
+            f'({self._pulse_on}s ON / {self._pulse_off}s OFF)\n'
+            f'  Departure beacon    : {self._departure_secs}s\n'
+            f'  Return stabilize    : {self._return_stabilize}s\n'
             f'  GPIO chip/line      : {self._gpio_chip_path} / {self._gpio_line_num} '
             f'({"OK" if self._gpio16_ok else "DISABLED"})\n'
             f'  Beep sound          : {self._beep_sound_path}  vol {self._beep_volume}%\n'
-            f'  Control topics      : start=/delivery/start  stop=/delivery/stop\n'
         )
 
     # =========================================================================
-    # GPIO16 — hardware check
+    # GPIO16 — hardware check (once, before holder thread starts)
     # =========================================================================
 
     def _check_gpio16(self) -> bool:
@@ -323,10 +279,15 @@ class DeliveryRunner(Node):
             return False
 
     # =========================================================================
-    # GPIO16 — persistent line-holder thread (steady beacon)
+    # GPIO16 — persistent line-holder thread
     # =========================================================================
 
     def _gpio16_holder_thread(self):
+        """
+        Owns the gpiod line for the node's entire lifetime.
+        Drives HIGH while _gpio16_high_event is set, LOW otherwise.
+        Exits when _gpio16_stop_event is set.
+        """
         if not self._gpio16_ok:
             self._gpio16_stop_event.wait()
             return
@@ -368,26 +329,63 @@ class DeliveryRunner(Node):
             self.get_logger().error(f'[GPIO16-thread] Fatal: {e}')
 
     def _gpio16_set(self, high: bool):
+        """Drive GPIO16 HIGH or LOW via the persistent holder thread."""
         if high:
             self._gpio16_high_event.set()
         else:
             self._gpio16_high_event.clear()
 
     # =========================================================================
+    # GPIO16 — departure beacon (hold HIGH for departure_beacon_sec)
+    # =========================================================================
+
+    def _departure_beacon(self):
+        self.get_logger().info(
+            f'[GPIO] pin16 → HIGH ▲  (holding for {self._departure_secs}s)'
+        )
+        self._gpio16_set(True)
+        time.sleep(self._departure_secs)
+        self._gpio16_set(False)
+        self.get_logger().info('[GPIO] pin16 → LOW  ▼  (departure beacon done)')
+
+    # =========================================================================
+    # GPIO32
+    # =========================================================================
+
+    def _gpio32_set(self, value: bool):
+        try:
+            msg      = Bool()
+            msg.data = value
+            self._pub_pin32.publish(msg)
+            self.get_logger().info(
+                f'[GPIO] pin32 → {"HIGH ▲" if value else "LOW  ▼"}'
+            )
+        except Exception:
+            pass
+
+    # =========================================================================
     # Beep loop thread
     # =========================================================================
 
     def _beep_loop_thread(self):
+        """
+        Continuously plays the beep sound while _beep_active_event is set.
+        Each play() call blocks until the file finishes, then loops immediately.
+        Stops after the current play finishes once the event is cleared.
+        Exits when _beep_stop_event is set.
+        """
         vol_fraction = max(0.0, min(1.0, self._beep_volume / 100.0))
         self.get_logger().info('[Beep-thread] Ready')
 
         while not self._beep_stop_event.is_set():
+            # Wait until beep is requested
             if not self._beep_active_event.wait(timeout=0.1):
                 continue
 
             if self._beep_stop_event.is_set():
                 break
 
+            # Check sound file exists
             if not os.path.exists(self._beep_sound_path):
                 self.get_logger().warn(
                     f'[Beep-thread] Sound file not found: {self._beep_sound_path} — '
@@ -400,12 +398,17 @@ class DeliveryRunner(Node):
 
             while self._beep_active_event.is_set() and not self._beep_stop_event.is_set():
                 try:
-                    cmd  = ['play', '-q', self._beep_sound_path, 'vol', str(vol_fraction)]
+                    cmd = [
+                        'play', '-q',
+                        self._beep_sound_path,
+                        'vol', str(vol_fraction)
+                    ]
                     proc = subprocess.Popen(
                         cmd,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
+                    # Poll so we can react quickly if the event is cleared
                     while proc.poll() is None:
                         if not self._beep_active_event.is_set() or \
                                 self._beep_stop_event.is_set():
@@ -425,6 +428,7 @@ class DeliveryRunner(Node):
         self.get_logger().info('[Beep-thread] Exiting')
 
     def _beep_set(self, active: bool):
+        """Start (active=True) or stop (active=False) the continuous beep loop."""
         if active:
             self._beep_active_event.set()
         else:
@@ -435,6 +439,7 @@ class DeliveryRunner(Node):
     # =========================================================================
 
     def _mission_signal(self, active: bool):
+        """Turn GPIO16 beacon and beep ON or OFF together."""
         self._gpio16_set(active)
         self._beep_set(active)
 
@@ -443,74 +448,39 @@ class DeliveryRunner(Node):
     # =========================================================================
 
     def _detect_active_map(self):
-        """
-        Query lidar_localization for its map_path parameter.
-        Retries until map_detect_timeout seconds have elapsed.
-        On success: sets self.active_map.
-        On failure: leaves self.active_map as None — _routes_poll_cb will
-        keep retrying automatically so no manual restart is needed.
-
-        Map name is derived from the PCD filename stem:
-          '/path/to/adibatla_outdoor.pcd' → 'adibatla_outdoor'
-        """
         srv_name = f'/{self._map_server_node}/get_parameters'
         client   = self.create_client(GetParameters, srv_name)
         self.get_logger().info(
             f'[MapDetect] Contacting {srv_name} '
-            f'(param: "{self._map_param_name}", '
-            f'timeout: {self._map_detect_timeout}s)...'
+            f'(timeout: {self._map_detect_timeout}s)...'
         )
         deadline = time.time() + self._map_detect_timeout
-
         while not client.wait_for_service(timeout_sec=1.0):
             if time.time() > deadline:
-                self.get_logger().error(
-                    f'[MapDetect] ✗ /{self._map_server_node} not available after '
-                    f'{self._map_detect_timeout}s. '
-                    f'Will retry every {self._routes_poll_interval}s automatically.'
-                )
+                self.get_logger().error('[MapDetect] ✗ map_server not available.')
                 return
             self.get_logger().warn(
-                f'[MapDetect] /{self._map_server_node} not ready — retrying...',
+                '[MapDetect] map_server not ready — retrying...',
                 throttle_duration_sec=2.0
             )
-
         request       = GetParameters.Request()
-        request.names = [self._map_param_name]
+        request.names = ['yaml_filename']
         future        = client.call_async(request)
         remaining     = max(deadline - time.time(), 2.0)
         rclpy.spin_until_future_complete(self, future, timeout_sec=remaining)
-
         if not future.done():
-            self.get_logger().error(
-                '[MapDetect] ✗ Parameter request timed out. '
-                f'Will retry every {self._routes_poll_interval}s automatically.'
-            )
+            self.get_logger().error('[MapDetect] ✗ Parameter request timed out.')
             return
-
         try:
             response = future.result()
         except Exception as e:
-            self.get_logger().error(
-                f'[MapDetect] ✗ Exception: {e}. '
-                f'Will retry every {self._routes_poll_interval}s automatically.'
-            )
+            self.get_logger().error(f'[MapDetect] ✗ Exception: {e}')
             return
-
         if not response.values or not response.values[0].string_value:
-            self.get_logger().error(
-                f'[MapDetect] ✗ "{self._map_param_name}" empty or missing on '
-                f'/{self._map_server_node}. '
-                f'Will retry every {self._routes_poll_interval}s automatically.'
-            )
+            self.get_logger().error('[MapDetect] ✗ yaml_filename empty or missing.')
             return
-
-        map_path        = response.values[0].string_value
-        self.active_map = _map_stem_from_path(map_path)
-        self.get_logger().info(
-            f'[MapDetect] ✓ Active map: "{self.active_map}" '
-            f'(from {self._map_param_name}: {map_path})'
-        )
+        self.active_map = _map_stem_from_yaml_path(response.values[0].string_value)
+        self.get_logger().info(f'[MapDetect] ✓ Active map: "{self.active_map}"')
 
     # =========================================================================
     # Routes poll timer callback
@@ -519,25 +489,11 @@ class DeliveryRunner(Node):
     def _routes_poll_cb(self):
         """
         Called every routes_poll_interval seconds.
-
-        If active_map is None (map detection failed at startup), retries
-        _detect_active_map() so the node self-heals without a restart.
-
-        If active_map is set, re-reads the YAML and republishes
-        /delivery/available_routes only if the route list has changed.
+        Re-reads the YAML and republishes /delivery/available_routes only
+        if the route list has changed since the last publish.
         Silent when nothing changed — no log spam.
         """
         if self.active_map is None:
-            self.get_logger().info(
-                '[RoutesPoll] active_map not set — retrying map detection...'
-            )
-            self._detect_active_map()
-            if self.active_map is not None:
-                self.get_logger().info(
-                    f'[RoutesPoll] Map detection recovered: "{self.active_map}"'
-                )
-                self._publish_available_routes()
-                self._publish_status()
             return
 
         current_routes = self._read_route_names_for_map(self.active_map)
@@ -550,50 +506,37 @@ class DeliveryRunner(Node):
             self._publish_available_routes()
 
     # =========================================================================
-    # State helper
-    # =========================================================================
-
-    def _set_state(self, state: str):
-        with self._state_lock:
-            self._state = state
-        self._publish_status()
-
-    # =========================================================================
     # Subscriber callbacks
     # =========================================================================
 
-    def _start_cb(self, msg: String):
+    def _go_cb(self, msg: String):
         route = msg.data.strip()
         if not route:
-            self.get_logger().warn('[/delivery/start] Empty route name — ignoring')
+            self.get_logger().warn('[/delivery/go] Empty route name — ignoring')
             return
         with self._state_lock:
             if self._state != State.IDLE:
                 self.get_logger().warn(
-                    f'[/delivery/start] Mission already running '
+                    f'[/delivery/go] Mission already running '
                     f'(state: {self._state}) — ignoring "{route}"'
                 )
                 return
             if self.active_map is None:
                 self.get_logger().error(
-                    '[/delivery/start] Active map not detected — cannot start mission'
+                    '[/delivery/go] Active map not detected — cannot start mission'
                 )
                 return
             self._route_name = route
             self._state      = State.OUTBOUND
 
-        # Fresh mission — clear any stale stop request
-        self._stop_event.clear()
-
-        mode = 'LOOP (forever)' if self._auto_return else 'single trip'
         self.get_logger().info(
             f'[DeliveryRunner] Mission START → '
-            f'route: "{route}"  map: "{self.active_map}"  mode: {mode}'
+            f'route: "{route}"  map: "{self.active_map}"'
         )
 
-        # ── Beacon + beep ON immediately when /delivery/start is received ─────
+        # ── Beacon + beep ON immediately when /delivery/go is received ────────
         self._mission_signal(True)
-        self.get_logger().info('[Mission] Beacon ON + Beep START')
+        self.get_logger().info('[Mission] Beacon ON + Beep START (outbound leg)')
 
         self._publish_status()
 
@@ -602,58 +545,21 @@ class DeliveryRunner(Node):
         )
         self._mission_thread.start()
 
-    # ── /delivery/unloaded callback — RETIRED (commented out, kept for ref) ──
-    # def _unloaded_cb(self, _msg: Empty):
-    #     with self._state_lock:
-    #         if self._state != State.ARRIVED:
-    #             self.get_logger().warn(
-    #                 f'[/delivery/unloaded] Ignored — '
-    #                 f'state is {self._state} (must be ARRIVED)'
-    #             )
-    #             return
-    #     self.get_logger().info('[/delivery/unloaded] ✓ Unloaded signal received')
-    #     self._mission_signal(True)
-    #     self._unloaded_event.set()
-
-    def _stop_cb(self, _msg: Empty):
-        """
-        Stop the current mission / auto-return loop immediately.
-        Cancels the in-flight FollowPath goal so the robot halts now, and sets
-        _stop_event so the mission thread exits cleanly at the next checkpoint.
-        The _run_mission finally block turns beacon + beep off and returns to IDLE.
-        """
+    def _unloaded_cb(self, _msg: Empty):
         with self._state_lock:
-            running = self._state != State.IDLE
-            current = self._state
-        if not running:
-            self.get_logger().warn('[/delivery/stop] No mission running — ignoring')
-            return
+            if self._state != State.ARRIVED:
+                self.get_logger().warn(
+                    f'[/delivery/unloaded] Ignored — '
+                    f'state is {self._state} (must be ARRIVED)'
+                )
+                return
+        self.get_logger().info('[/delivery/unloaded] ✓ Unloaded signal received')
 
-        # Remember which leg was interrupted, for direction-aware resume.
-        if current in (State.OUTBOUND, State.RETURNING):
-            self._interrupted_leg = current
-            self.get_logger().info(
-                f'[/delivery/stop] Interrupted during {current} — '
-                f'remembered for next resume'
-            )
+        # ── Beacon + beep ON when operator sends /delivery/unloaded ──────────
+        self._mission_signal(True)
+        self.get_logger().info('[Mission] Beacon ON + Beep START (return leg)')
 
-        self.get_logger().info(
-            '[/delivery/stop] ✓ Stop requested — cancelling navigation immediately'
-        )
-        self._stop_event.set()
-        self._cancel_active_goal()
-
-    def _cancel_active_goal(self):
-        """Cancel the in-flight FollowPath goal, if any."""
-        gh = self._active_goal_handle
-        if gh is None:
-            self.get_logger().info('[Stop] No active navigation goal to cancel')
-            return
-        try:
-            self.get_logger().info('[Stop] Cancelling active FollowPath goal')
-            gh.cancel_goal_async()
-        except Exception as e:
-            self.get_logger().warn(f'[Stop] Cancel request failed: {e}')
+        self._unloaded_event.set()
 
     # =========================================================================
     # Mission thread
@@ -665,12 +571,9 @@ class DeliveryRunner(Node):
         except Exception as e:
             self.get_logger().error(f'[Mission] Unhandled exception: {e}')
         finally:
-            # Always ensure beacon and beep are off when the mission ends
+            # Always ensure beacon and beep are off when mission ends
             self._mission_signal(False)
-            # If the mission ended on its own (not via /delivery/stop), there is
-            # no interrupted leg to resume from next time — clear the memory.
-            if not self._stop_event.is_set():
-                self._interrupted_leg = None
+            self._gpio32_set(False)
             with self._state_lock:
                 self._state = State.IDLE
             self._publish_status()
@@ -680,17 +583,16 @@ class DeliveryRunner(Node):
 
     def _mission_body(self):
 
-        # ── 0. Pre-departure delay (interruptible) ───────────────────────────
-        # Beacon + beep are already ON (started in _start_cb).
+        # ── 0. Pre-departure delay ───────────────────────────────────────────
+        # Beacon + beep are already ON (started in _go_cb).
+        # Robot waits here before moving — operator can hear/see the signal.
         self.get_logger().info(
             f'[Mission] Pre-departure delay — waiting {self._predeparture_delay}s '
-            f'before first outbound leg (beacon + beep already active)'
+            f'before outbound navigation (beacon + beep already active)'
         )
-        if self._stop_event.wait(timeout=self._predeparture_delay):
-            self.get_logger().info('[Mission] Stop requested during pre-departure delay')
-            return
+        time.sleep(self._predeparture_delay)
 
-        # ── 1. Load outbound waypoints ────────────────────────────────────────
+        # ── 1. Load outbound waypoints ──────────────────────────────────────
         poses = self._load_poses(self._route_name)
         if len(poses) < 2:
             self.get_logger().error(
@@ -700,185 +602,140 @@ class DeliveryRunner(Node):
 
         self._outbound_poses = poses
 
-        # ── 2. Canonical outbound order is always WP0 → WPN ─────────────────
-        # `ordered` is never cyclically reordered. The first leg MAY start from
-        # a mid-route waypoint (see _plan_first_leg / resume_from_nearest), but
-        # only ever as a forward or backward *slice* of this list — never a
-        # wrap-around — so the route can't fold back on itself.
+        # ── 2. Always start from WP0 ────────────────────────────────────────
+        # Do NOT reorder by nearest waypoint. The nearest-waypoint logic caused
+        # the second mission to instantly "arrive" when the robot returned to a
+        # position near a mid-route waypoint, wrapping the route backwards.
+        # WP0 is always the home/start position — always plan from there.
         self._update_robot_pose()
         self.get_logger().info(
-            f'[DEBUG] Robot pose before first leg: '
+            f'[DEBUG] Robot pose before outbound: '
             f'x={self._current_x:.3f}  y={self._current_y:.3f}'
         )
 
-        ordered = poses  # canonical WP0 → WPN
+        ordered = poses  # always WP0 first
 
-        self.get_logger().info('[DEBUG] Outbound waypoint order (WP0 → WPN):')
+        self.get_logger().info('[DEBUG] Outbound waypoint order (first→last):')
         for i, p in enumerate(ordered):
             self.get_logger().info(
                 f'  WP{i}: x={p.pose.position.x:.3f}  y={p.pose.position.y:.3f}'
             )
 
-        # Build the reverse leg once (WPN → WP0); reused every lap in loop mode.
-        return_poses = self._build_reverse_leg(ordered)
+        self._publish_full_path(ordered)
 
-        # ── 3. Run laps (one, or forever if auto_return) ─────────────────────
-        self._run_laps(ordered, return_poses)
+        # ── 3. OUTBOUND navigation ──────────────────────────────────────────
+        # Beacon + beep remain ON throughout outbound travel.
+        self.get_logger().info(f'[Mission] OUTBOUND — {len(ordered)} waypoints')
+        success = self._execute_leg(ordered, 'OUTBOUND')
+        if not success:
+            self.get_logger().error('[Mission] OUTBOUND failed — aborting')
+            return
 
-    # =========================================================================
-    # Lap runner — shared by single-trip and forever-loop modes
-    # =========================================================================
+        # ── 4. ARRIVED — beacon + beep OFF, then pulse pin32 ────────────────
+        with self._state_lock:
+            self._state = State.ARRIVED
+        self._publish_status()
 
-    def _run_laps(self, ordered: list, return_poses: list):
-        """
-        Leg-based runner shared by single-trip and forever-loop modes.
+        self._mission_signal(False)
+        self.get_logger().info('[Mission] ARRIVED — Beacon OFF, Beep STOP')
 
-        A "leg" is one traversal that ends at an endpoint (WPN or WP0):
-            OUTBOUND  → WP0 → WPN
-            RETURNING → WPN → WP0
-        Steady state alternates OUTBOUND / RETURNING with an endpoint wait
-        (return_stabilize_sec) at every endpoint.
-
-        The FIRST leg is chosen by _plan_first_leg(): with resume_from_nearest
-        it may be a *partial* leg starting from the waypoint nearest the robot,
-        in the direction it was travelling when last stopped. Every leg after
-        the first is a full WP0↔WPN traversal.
-
-        auto_return == False : finish after the first RETURNING reaches WP0.
-        auto_return == True  : alternate forever until /delivery/stop.
-
-        Beacon + beep stay ON the whole time (lean loop). A stop cancels the
-        active navigation immediately and breaks out.
-        """
-        mode = 'LOOP forever (until /delivery/stop)' if self._auto_return \
-            else 'single out-and-back'
-        self.get_logger().info(f'[Mission] Running — {mode}')
-
-        # Decide the first leg (resume-from-nearest, direction-aware).
-        leg_type, leg_poses, reason = self._plan_first_leg(ordered, return_poses)
-        self.get_logger().info(f'[Mission] First leg → {leg_type}: {reason}')
-
-        leg_num = 0
-        while not self._stop_event.is_set():
-            leg_num += 1
-            endpoint = 'WPN' if leg_type == State.OUTBOUND else 'WP0'
-
-            # ── Execute the current leg ──────────────────────────────────────
-            self._set_state(leg_type)
-            self._publish_full_path(leg_poses)
-            self.get_logger().info(
-                f'[Leg {leg_num}] {leg_type} → {endpoint} '
-                f'({len(leg_poses)} waypoints)'
-            )
-            if not self._execute_leg(leg_poses, f'{leg_type} (leg {leg_num})'):
-                self._report_leg_break(leg_type, leg_num)
-                break
-            if self._stop_event.is_set():
-                break
-
-            # ── Single trip ends once a RETURNING leg reaches WP0 ────────────
-            if not self._auto_return and leg_type == State.RETURNING:
-                self.get_logger().info('[Mission] ✓ Single out-and-back complete — at WP0')
-                break
-
-            # ── Endpoint wait before the next leg ────────────────────────────
-            if self._endpoint_wait(leg_num, endpoint):
-                break
-
-            # ── Alternate to the next FULL leg ───────────────────────────────
-            if leg_type == State.OUTBOUND:
-                leg_type, leg_poses = State.RETURNING, return_poses
-            else:
-                leg_type, leg_poses = State.OUTBOUND, ordered
-
-        if self._stop_event.is_set():
-            self.get_logger().info(
-                f'[Mission] ✓ Stopped by /delivery/stop after {leg_num} leg(s)'
-            )
-        else:
-            self.get_logger().info(f'[Mission] Finished after {leg_num} leg(s)')
-
-    def _plan_first_leg(self, ordered: list, return_poses: list):
-        """
-        Choose the first leg based on resume_from_nearest and the robot pose.
-
-        Returns (leg_type, leg_poses, reason_str) where leg_type is
-        State.OUTBOUND or State.RETURNING.
-
-        Default (resume disabled, TF unavailable, or robot already at an
-        endpoint): a full leg from WP0 / WPN. Otherwise a partial leg starting
-        from the nearest waypoint, in the direction the robot was last going:
-          - interrupted while OUTBOUND (or no memory) → forward, nearest → WPN
-          - interrupted while RETURNING               → backward, nearest → WP0
-        """
-        if not self._resume_from_nearest:
-            return State.OUTBOUND, ordered, 'full outbound from WP0 (resume disabled)'
-
-        if not self._update_robot_pose():
-            return State.OUTBOUND, ordered, 'full outbound from WP0 (TF pose unavailable)'
-
-        nearest_idx = self._nearest_waypoint_index(ordered)
-        last_idx    = len(ordered) - 1
-        resume_returning = (self._interrupted_leg == State.RETURNING)
-
-        if resume_returning:
-            # Head home from the nearest waypoint: partial RETURNING → WP0.
-            backward = self._build_reverse_leg(ordered[:nearest_idx + 1])
-            if len(backward) >= 1:
-                return (State.RETURNING, backward,
-                        f'partial RETURNING from WP{nearest_idx} → WP0 '
-                        f'(resuming return direction)')
-            # nearest is WP0 already → nothing to return; do a full outbound.
-            return State.OUTBOUND, ordered, 'already at WP0 → full outbound'
-
-        # Head out from the nearest waypoint: partial OUTBOUND → WPN.
-        forward = ordered[nearest_idx:]
-        if len(forward) >= 2:
-            return (State.OUTBOUND, forward,
-                    f'partial OUTBOUND from WP{nearest_idx} → WPN '
-                    f'(resuming outbound direction)')
-        # nearest is WPN already → nothing to go out to; do a full return.
-        return State.RETURNING, return_poses, f'already at WP{last_idx} (WPN) → full return'
-
-    def _nearest_waypoint_index(self, poses: list) -> int:
-        """Index of the waypoint geometrically closest to the current robot pose."""
-        best_i, best_d = 0, float('inf')
-        for i, p in enumerate(poses):
-            d = dist2d(self._current_x, self._current_y,
-                       p.pose.position.x, p.pose.position.y)
-            if d < best_d:
-                best_d, best_i = d, i
-        self.get_logger().info(
-            f'[Resume] Nearest waypoint: WP{best_i} at {best_d:.2f} m '
-            f'(robot x={self._current_x:.2f}, y={self._current_y:.2f})'
-        )
-        return best_i
-
-    def _endpoint_wait(self, leg_num: int, where: str) -> bool:
-        """
-        Interruptible stabilization wait at an endpoint (WPN or WP0), followed
-        by a costmap clear so the next leg plans cleanly. Beacon + beep stay ON.
-        Returns True if a stop was requested (caller should break the loop).
-        """
         self._update_robot_pose()
         self.get_logger().info(
-            f'[Leg {leg_num}] Reached {where} '
-            f'(x={self._current_x:.3f}, y={self._current_y:.3f}) — '
-            f'waiting {self._return_stabilize}s for ICP re-lock'
+            f'[DEBUG] Robot pose at ARRIVED: '
+            f'x={self._current_x:.3f}  y={self._current_y:.3f}'
         )
-        if self._stop_event.wait(timeout=self._return_stabilize):
-            return True
-        self.get_logger().info(f'[Leg {leg_num}] Clearing costmaps at {where}')
+        self.get_logger().info('[Mission] ARRIVED — pulsing arrival beacon (pin32)')
+        self._pulse_arrival_beacon()
+
+        # ── 5. Wait for /delivery/unloaded ──────────────────────────────────
+        # _unloaded_cb will turn beacon + beep ON before setting this event.
+        self._unloaded_event.clear()
+        self.get_logger().info('[Mission] Waiting for /delivery/unloaded from operator...')
+        self._unloaded_event.wait()
+        # At this point beacon + beep are already ON (set in _unloaded_cb)
+
+        # ── 6. DEPARTING — pin16 already HIGH; hold for departure_beacon_sec ─
+        # The beacon is already ON from _unloaded_cb, so we just sleep here
+        # for the departure hold duration before the return trip begins.
+        with self._state_lock:
+            self._state = State.DEPARTING
+        self._publish_status()
+        self.get_logger().info(
+            f'[Mission] DEPARTING — beacon already HIGH, '
+            f'holding {self._departure_secs}s before return navigation'
+        )
+        time.sleep(self._departure_secs)
+
+        # ── 7. Stabilization wait ────────────────────────────────────────────
+        # Beacon + beep stay ON while ICP re-locks.
+        self.get_logger().info(
+            f'[DEBUG] Stabilization wait START — waiting {self._return_stabilize}s '
+            f'for person to clear and ICP to re-lock'
+        )
+        time.sleep(self._return_stabilize)
+
+        odom_ok = self._update_robot_pose()
+        self.get_logger().info(
+            f'[DEBUG] Stabilization wait END — '
+            f'odom_ok={odom_ok}  '
+            f'robot pose: x={self._current_x:.3f}  y={self._current_y:.3f}'
+        )
+
+        # Clear both costmaps — removes ghost obstacles left by the person
+        self.get_logger().info('[DEBUG] Clearing costmaps before return trip')
         self._clear_costmaps()
         self._clear_local_costmap()
-        return self._stop_event.is_set()
+        self.get_logger().info('[DEBUG] Costmaps cleared')
 
-    def _report_leg_break(self, leg: str, leg_num: int):
-        """Log why a leg ended (stop vs failure)."""
-        if self._stop_event.is_set():
-            self.get_logger().info(f'[Leg {leg_num}] Stopped during {leg}')
-        else:
-            self.get_logger().error(f'[Leg {leg_num}] {leg} failed — ending mission')
+        # ── 8. RETURNING — reversed waypoints, beacon + beep remain ON ──────
+        with self._state_lock:
+            self._state = State.RETURNING
+        self._publish_status()
+
+        return_poses = self._build_reverse_leg(ordered)
+
+        self.get_logger().info('[DEBUG] Return waypoint order (first→last):')
+        for i, p in enumerate(return_poses):
+            self.get_logger().info(
+                f'  WP{i}: x={p.pose.position.x:.3f}  y={p.pose.position.y:.3f}  '
+                f'oz={p.pose.orientation.z:.3f}  ow={p.pose.orientation.w:.3f}'
+            )
+
+        self._publish_full_path(return_poses)
+
+        self.get_logger().info(
+            f'[Mission] RETURNING — {len(return_poses)} waypoints (reversed)'
+        )
+        success = self._execute_leg(return_poses, 'RETURNING')
+        if not success:
+            self.get_logger().error(
+                '[Mission] RETURNING failed — robot may need manual recovery'
+            )
+            return
+
+        self._update_robot_pose()
+        self.get_logger().info(
+            f'[DEBUG] Robot pose at home: '
+            f'x={self._current_x:.3f}  y={self._current_y:.3f}'
+        )
+        self.get_logger().info('[Mission] ✓ Return complete — back home')
+        # _run_mission finally block will call _mission_signal(False)
+
+    # =========================================================================
+    # Arrival beacon — pin32 pulse sequence
+    # =========================================================================
+
+    def _pulse_arrival_beacon(self):
+        for i in range(self._arrival_pulses):
+            self.get_logger().info(
+                f'[Beacon] Pulse {i + 1}/{self._arrival_pulses} — HIGH'
+            )
+            self._gpio32_set(True)
+            time.sleep(self._pulse_on)
+            self._gpio32_set(False)
+            if i < self._arrival_pulses - 1:
+                time.sleep(self._pulse_off)
+        self.get_logger().info('[Beacon] Arrival pulse sequence complete')
 
     # =========================================================================
     # YAML helpers
@@ -949,6 +806,7 @@ class DeliveryRunner(Node):
                 )
                 continue
 
+            # Force Z=0 and pure-yaw quaternion for 2D NavFn planner
             raw_z = float(wp['orientation']['z'])
             raw_w = float(wp['orientation']['w'])
             mag   = math.sqrt(raw_z**2 + raw_w**2)
@@ -960,7 +818,7 @@ class DeliveryRunner(Node):
             ps.header.stamp       = self.get_clock().now().to_msg()
             ps.pose.position.x    = float(wp['position']['x'])
             ps.pose.position.y    = float(wp['position']['y'])
-            ps.pose.position.z    = float(wp['position']['z'])
+            ps.pose.position.z    = 0.0
             ps.pose.orientation.x = 0.0
             ps.pose.orientation.y = 0.0
             ps.pose.orientation.z = raw_z / mag
@@ -978,21 +836,33 @@ class DeliveryRunner(Node):
     # =========================================================================
 
     def _build_reverse_leg(self, forward_poses: list) -> list:
+        """
+        Reverse the waypoint list and flip each pose yaw by 180° using
+        correct quaternion multiplication for 2D rotation.
+        """
         reverse_poses = []
         for pose in reversed(forward_poses[:-1]):
-            rp  = copy.deepcopy(pose)
-            oz  = rp.pose.orientation.z
-            ow  = rp.pose.orientation.w
+            rp = copy.deepcopy(pose)
+
+            oz = rp.pose.orientation.z
+            ow = rp.pose.orientation.w
+
+            # Rotate 180° around Z: multiply quaternion by (0, 0, sin90, cos90) = (0,0,1,0)
+            # Result: new_oz = ow, new_ow = -oz
             new_oz = ow
             new_ow = -oz
-            mag    = math.sqrt(new_oz**2 + new_ow**2)
+
+            mag = math.sqrt(new_oz**2 + new_ow**2)
             if mag < 1e-6:
                 mag = 1.0
+
             rp.pose.orientation.x = 0.0
             rp.pose.orientation.y = 0.0
             rp.pose.orientation.z = new_oz / mag
             rp.pose.orientation.w = new_ow / mag
+
             reverse_poses.append(rp)
+
         return reverse_poses
 
     # =========================================================================
@@ -1023,22 +893,26 @@ class DeliveryRunner(Node):
     def _clear_costmaps(self):
         if self._clear_global.wait_for_service(timeout_sec=2.0):
             future = self._clear_global.call_async(ClearEntireCostmap.Request())
-            ok     = _wait_for_future(future, timeout_sec=5.0)
+            ok = _wait_for_future(future, timeout_sec=5.0)
             self.get_logger().info(
                 f'[DEBUG] Global costmap clear: {"OK" if ok else "TIMEOUT"}'
             )
         else:
-            self.get_logger().warn('[DEBUG] Global costmap clear service not available')
+            self.get_logger().warn(
+                '[DEBUG] Global costmap clear service not available'
+            )
 
     def _clear_local_costmap(self):
         if self._clear_local.wait_for_service(timeout_sec=2.0):
             future = self._clear_local.call_async(ClearEntireCostmap.Request())
-            ok     = _wait_for_future(future, timeout_sec=5.0)
+            ok = _wait_for_future(future, timeout_sec=5.0)
             self.get_logger().info(
                 f'[DEBUG] Local costmap clear: {"OK" if ok else "TIMEOUT"}'
             )
         else:
-            self.get_logger().warn('[DEBUG] Local costmap clear service not available')
+            self.get_logger().warn(
+                '[DEBUG] Local costmap clear service not available'
+            )
 
     # =========================================================================
     # Plan leg
@@ -1142,10 +1016,6 @@ class DeliveryRunner(Node):
             self.get_logger().info(f'[{label}] ✓ Navigation succeeded')
             return True
 
-        if status == GoalStatus.STATUS_CANCELED:
-            self.get_logger().info(f'[{label}] Navigation cancelled (stop requested)')
-            return False
-
         self.get_logger().warn(f'[{label}] Navigation ended with status {status}')
         return False
 
@@ -1160,10 +1030,6 @@ class DeliveryRunner(Node):
     # =========================================================================
 
     def _execute_leg(self, ordered_poses: list, label: str) -> bool:
-        # Bail out early if a stop was requested before we even start.
-        if self._stop_event.is_set():
-            return False
-
         self.get_logger().info(
             f'[{label}] Planning batched path through {len(ordered_poses)} waypoints'
         )
@@ -1177,11 +1043,8 @@ class DeliveryRunner(Node):
 
         path = self._plan_leg(ordered_poses, label)
         if path is None:
-            if self._stop_event.is_set():
-                return False
             self.get_logger().warn(f'[{label}] Plan failed — retrying in 2s...')
-            if self._stop_event.wait(timeout=2.0):
-                return False
+            time.sleep(2.0)
             self._update_robot_pose()
             self.get_logger().info(
                 f'[DEBUG] [{label}] Robot pose before retry: '
@@ -1193,20 +1056,11 @@ class DeliveryRunner(Node):
                 self.get_logger().error(f'[{label}] Retry plan failed — aborting')
                 return False
 
-        # Don't start following if a stop landed during planning.
-        if self._stop_event.is_set():
-            return False
-
         success = self._follow_path(path, label)
 
         if not success:
-            # A stop cancels the goal → do NOT retry, just exit.
-            if self._stop_event.is_set():
-                self.get_logger().info(f'[{label}] Navigation cancelled by stop')
-                return False
             self.get_logger().info(f'[{label}] Follow failed — replanning once...')
-            if self._stop_event.wait(timeout=1.0):
-                return False
+            time.sleep(1.0)
             self._update_robot_pose()
             self.get_logger().info(
                 f'[DEBUG] [{label}] Robot pose before replan: '
@@ -1216,8 +1070,6 @@ class DeliveryRunner(Node):
             retry_path = self._plan_leg(ordered_poses, f'{label} retry')
             if retry_path is None:
                 self.get_logger().error(f'[{label}] Retry plan failed')
-                return False
-            if self._stop_event.is_set():
                 return False
             success = self._follow_path(retry_path, f'{label} retry')
 
@@ -1231,10 +1083,9 @@ class DeliveryRunner(Node):
         with self._state_lock:
             state = self._state
         payload  = {
-            'state':       state,
-            'route':       self._route_name,
-            'map':         self.active_map if self.active_map else 'unknown',
-            'auto_return': self._auto_return,
+            'state': state,
+            'route': self._route_name,
+            'map':   self.active_map if self.active_map else 'unknown',
         }
         msg      = String()
         msg.data = json.dumps(payload)
@@ -1269,14 +1120,12 @@ class DeliveryRunner(Node):
     # =========================================================================
 
     def destroy_node(self):
-        self.get_logger().info('[DeliveryRunner] Shutting down — beacon LOW, beep STOP')
-        # Stop any running mission / loop and cancel in-flight navigation.
-        self._stop_event.set()
-        self._cancel_active_goal()
+        self.get_logger().info('[DeliveryRunner] Shutting down — GPIOs LOW, beep STOP')
         self._mission_signal(False)
+        self._gpio32_set(False)
         self._gpio16_stop_event.set()
         self._beep_stop_event.set()
-        self._beep_active_event.set()
+        self._beep_active_event.set()   # unblock the beep thread if it's waiting
         self._gpio16_thread.join(timeout=2.0)
         self._beep_thread.join(timeout=3.0)
         super().destroy_node()

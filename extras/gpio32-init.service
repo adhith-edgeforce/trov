@@ -1,0 +1,11 @@
+[Unit]
+Description=Initialize GPIO Pin 32 LOW
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/gpio32_init.py
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

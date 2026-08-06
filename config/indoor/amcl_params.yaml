@@ -69,7 +69,21 @@ amcl:
     save_pose_rate: 0.5
 
     # ── Initial pose ──────────────────────────────────────────────────────
-    set_initial_pose: False
-    initial_pose_x: -3.554
-    initial_pose_y: 3.642
-    initial_pose_a: -1.414
+    set_initial_pose: True
+    always_reset_initial_pose: false
+    first_map_only: false
+    initial_pose:
+      x: -9.9001
+      y: -5.9521
+      z: 0.0
+      yaw: -0.35
+          #   - index: 0
+          # position:          #   x: -2.9084
+          #   y: 19.5651
+          #   z: -0.0135
+          # orientation:
+          #   x: 0.001118
+          #   y: -0.000208
+          #   z: 0.963952
+          #   w: -0.266073
+          # yaw_deg: -149.14
