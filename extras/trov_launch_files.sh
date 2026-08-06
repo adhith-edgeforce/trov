@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# TROV Workspace Launch Script
+# TROV Workspace Launch Script for Indoor
 # Launches (in order):
 #   1. RSLidar SDK
 #   2. WIT IMU
@@ -795,12 +795,12 @@ echo -e "${CYAN}--- Starting MAVROS ---${NC}"
 echo ""
 cd "$HOME"
 launch_node "mavros" \
-    ros2 run mavros mavros_node \
-        --ros-args -p fcu_url:=serial://"$FCU_PORT":"$FCU_BAUD"
+   ros2 run mavros mavros_node \
+       --ros-args -p fcu_url:=serial://"$FCU_PORT":"$FCU_BAUD"
 
 # Poll for /mavros/state topic — proves MAVROS is actually talking to the FCU.
 # This replaces the old blind 15s sleep.
-wait_for_topic "/mavros/state" 30 || log_warn "MAVROS /mavros/state not seen — FCU connection may have issues"
+wait_for_topic "/mavros/state" 30 || log_warn "MAVROS /mavros/state not seen — FCU connection may have #issues"
 cd "$WORKSPACE_DIR"
 
 # ============================================================
@@ -811,7 +811,7 @@ echo ""
 # ---------- 12. Drive Bridge ----------
 # Depends on: MAVROS (needs FCU comms path set up)
 launch_node "drive_bridge" \
-    ros2 run cpp_pubsub drive
+   ros2 run cpp_pubsub drive
 wait_for_node "drive_bridge" 10
 
 # ============================================================
