@@ -1,0 +1,104 @@
+### robosenseAiry_trov.yaml
+### FAST-LIO2 config for TROV — RoboSense RS-Airy (96-line) + built-in IMU
+###
+### FORK:  https://github.com/JunJie1213855/Fast-LIO2_ROS2   (branch: main)
+### PLACE: /data/trov_ws/src/Fast-LIO2_ROS2/FAST_LIO_ROBOAIRY/config/robosenseAiry_trov.yaml
+###        (i.e. NEXT TO the stock robosenseAiry.yaml -- the CMakeLists installs
+###         the whole config/ dir to share/, so rebuild after adding it, or use
+###         --symlink-install so edits take effect without rebuilding)
+###
+### Derived from the fork's stock robosenseAiry.yaml. Every deviation is
+### marked CHANGED with a reason. Params NOT in upstream FAST-LIO but specific
+### to this fork (gravity_ref, num_sub_cloud, ground/ceiling_filter_angle,
+### save_voxel_size, map_en, effect_map_en) are kept at their shipped values.
+
+/**:
+  ros__parameters:
+    # CHANGED: stock points at a nonexistent path on the author's machine.
+    # Empty + pcd_save_en:false means no map file is written.
+    map_file_path: ""
+
+    point_filter_num: 3      # keep every 3rd point; Airy is ~77k pts/frame
+    filter_size_surf: 0.5    # surf downsample voxel (m)
+    filter_size_map: 0.5     # ikd-tree map voxel (m)
+
+    common:
+      # CHANGED: stock is /rslidar_points. Your rslidar_sdk config sets
+      # ros_send_point_cloud_topic: /points
+      lid_topic: "/points"
+      imu_topic: "/rslidar_imu_data"
+
+      # Both streams are host-clock stamped per-packet by rs_driver
+      # (use_lidar_clock: false), so they share one timebase. rs_driver even
+      # rolls the lidar packet stamp back by one packet duration to approach
+      # true scan start. Residual skew is UDP jitter only -> no sync needed.
+      time_sync_en: false
+      time_offset_lidar_to_imu: 0.0
+
+    preprocess:
+      lidar_type: 5          # 5 = RSM1 enum = RoboSense M1/Airy handler
+      scan_line: 96          # Airy is 96-line
+      timestamp_unit: 0      # 0=SEC. RS `timestamp` is float64 SECONDS.
+                             # SEC -> time_unit_scale 1e3 -> curvature in ms.
+                             # Any other value silently disables de-skewing.
+      blind: 0.5             # matches rslidar_sdk min_distance: 0.5
+      ground_filter_angle: 0.0    # 0.0 = disabled (as shipped)
+      ceiling_filter_angle: 0.0   # 0.0 = disabled (as shipped)
+
+    mapping:
+      num_sub_cloud: 1
+      acc_cov: 0.1
+      gyr_cov: 0.1
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+
+      # Fork-specific, Airy z-flip convention. Leave as shipped.
+      gravity_ref: [0.0, 0.0, -9.81]
+
+      fov_degree: 360.0
+
+      # CHANGED: stock 15.0 -> 30.0 to match rslidar_sdk max_distance: 30.0
+      det_range: 30.0
+
+      save_voxel_size: 0.5
+
+      # ---------------------------------------------------------------
+      # extrinsic_R below is the fork's SHIPPED Airy matrix, and it is
+      # VERIFIED correct for this robot:
+      #
+      #   measured gravity (IMU frame) : [ 0.8578 -0.5109  0.0569]
+      #   rotated into LIDAR frame     : [ 0.5109 -0.8578 -0.0569]
+      #   predicted by base_link->lidar_link static TF
+      #     (0.53 0 0.53  -1.57 -0.52 -1.64) : [ 0.4969 -0.8657 -0.0600]
+      #   RESIDUAL: 0.94 deg
+      #
+      # The 30.1 deg discrepancy seen with an identity extrinsic_R was
+      # entirely the Airy's INTERNAL IMU-to-optical-frame rotation (it swaps
+      # X/Y and flips Z). The static TF is correct; do not "fix" it.
+      #
+      # Hence extrinsic_est_en stays FALSE -- online estimation would only
+      # rediscover a number we already have, and it can wander on
+      # degenerate indoor paths (long straight corridors).
+      # ---------------------------------------------------------------
+      extrinsic_est_en: false
+      extrinsic_T: [0.0, 0.0, 0.0]
+      extrinsic_R: [0.0, -1.0, 0.0,
+                    -1.0, 0.0, 0.0,
+                    0.0, 0.0, -1.0]
+
+    publish:
+      path_en: false              # CHANGED: stock true. Path grows unbounded.
+      scan_publish_en: true       # /cloud_registered -- needed to eyeball the
+                                  # ground plane on the first run
+      dense_publish_en: false
+      scan_bodyframe_pub_en: true
+      effect_map_en: false
+      map_en: false               # CHANGED: stock true. Republishes the WHOLE
+                                  # ikd-tree map every 1s -- heavy on an Orin
+                                  # and not needed for odometry.
+
+    pcd_save:
+      pcd_save_en: false          # CHANGED: stock true. You already have a
+                                  # gmapping map; saving PCDs to a nonexistent
+                                  # path wastes RAM and risks a crash on exit.
+      interval: -1

@@ -154,6 +154,13 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+
+install(PROGRAMS
+  scripts/lio_odom_bridge.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+
 add_executable(battery_monitor src/battery_monitor.cpp)
 ament_target_dependencies(battery_monitor rclcpp std_msgs)
 target_include_directories(battery_monitor PRIVATE /usr/include)

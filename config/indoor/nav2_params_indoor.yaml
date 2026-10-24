@@ -48,17 +48,17 @@ controller_server:
     
     FollowPath: 
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.5
-      lookahead_dist: 1.5 #2.0 # not being used when use_velocity_scaled_lookahead_dist: true
-      min_lookahead_dist: 1.5 #1.0 #1.6
-      max_lookahead_dist: 2.5
-      lookahead_time: 1.5
+      desired_linear_vel: 0.3
+      lookahead_dist: 2.0 #2.0 # not being used when use_velocity_scaled_lookahead_dist: true
+      min_lookahead_dist: 1.5 #1.5 #1.6
+      max_lookahead_dist: 2.5 #2.5
+      lookahead_time: 5.5 #1.5
       rotate_to_heading_angular_vel: 0.5
       transform_tolerance: 1.0
-      use_velocity_scaled_lookahead_dist: true
+      use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.08 #0.5
       approach_velocity_scaling_dist: 0.6
-      use_collision_detection: false
+      use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.5
       use_regulated_linear_velocity_scaling: true
       use_fixed_curvature_lookahead: false
@@ -72,7 +72,7 @@ controller_server:
       use_rotate_to_heading: true
       allow_reversing: false
       rotate_to_heading_min_angle: 0.4
-      max_angular_accel: 3.5 #14.0
+      max_angular_accel: 0.8 #3.5 #14.0
       max_robot_pose_search_dist: 10.0
       #min_distance_to_obstacle: 1.6 #1.0 #2.5 #1.6
 
@@ -179,7 +179,7 @@ local_costmap:
       observation_sources: scan
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.0
+        cost_scaling_factor: 3.0 #2.0
         inflation_radius: 0.5 #1.0
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
