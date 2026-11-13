@@ -40,13 +40,13 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.7
+      xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 3.14
 
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       desired_linear_vel: 0.6
-      lookahead_dist: 2.0
+      lookahead_dist: 5.0
       min_lookahead_dist: 1.6
       max_lookahead_dist: 5.0
       lookahead_time: 1.5
@@ -91,7 +91,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 2.0
-        inflation_radius: 0.8
+        inflation_radius: 0.4 #0.8
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -175,7 +175,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.8
+        inflation_radius: 0.4 #0.8
       always_send_full_costmap: True
 
 planner_server:

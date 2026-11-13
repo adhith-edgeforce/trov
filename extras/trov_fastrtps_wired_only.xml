@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TROV outdoor: DDS traffic must survive a Wi-Fi hotspot drop (2026-11-12).
+
+  Problem: the RoboSense driver runs on Cyclone DDS, every other node on FastRTPS.
+  Each FastRTPS participant advertises the Jetson's Wi-Fi address first, and the
+  driver sends /points and /rslidar_imu_data to that address. When the hotspot drops
+  the address disappears, lidar data stops and FAST-LIO diverges.
+
+  This profile (participant level, every FastRTPS node started by
+  trov_outdoor_launch_files.sh):
+    * keeps shared memory for FastRTPS <-> FastRTPS traffic (same as default);
+    * lets UDP use ONLY loopback and the static lidar-port address
+      192.168.2.202 (enP1p5s0), never Wi-Fi. eno1 (192.168.0.10) is left out on
+      purpose: if its cable drops, NetworkManager removes that address and the same
+      failure would come back. 192.168.2.202 only goes away with the lidar cable.
+  So the Wi-Fi address is never advertised and nothing on the robot depends on it.
+  Each participant still gets its own correct ports.
+
+  Consequence: other machines can NOT reach these nodes over DDS via Wi-Fi
+  (on 2026-11-12 nothing did; the UI uses rosbridge/websocket, which is unaffected).
+
+  Replaces trov_fastrtps_lidar_loopback.xml (2026-11-11), which was broken: its
+  per-topic locator had no port, so every process advertised participant 0's port
+  (7411, owned by wit_ros2_imu) and no lidar reader received data.
+
+  Off switch in the launch script: TROV_DDS_WIRED_ONLY=0
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>trov_shm</transport_id>
+      <type>SHM</type>
+    </transport_descriptor>
+    <transport_descriptor>
+      <transport_id>trov_udp_wired</transport_id>
+      <type>UDPv4</type>
+      <interfaceWhiteList>
+        <address>127.0.0.1</address>
+        <address>192.168.2.202</address>
+      </interfaceWhiteList>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="trov_wired_only" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>trov_shm</transport_id>
+        <transport_id>trov_udp_wired</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

@@ -160,6 +160,11 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/rc_delivery_trigger.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 
 add_executable(battery_monitor src/battery_monitor.cpp)
 ament_target_dependencies(battery_monitor rclcpp std_msgs)

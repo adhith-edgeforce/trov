@@ -328,43 +328,46 @@ class IndoorRouteFollower(Node):
         Route following is disabled while active_map is None.
         The poll timer (_routes_poll_cb) will keep retrying this automatically.
         """
+        # 2026-11-11: non-blocking map detection. The old version waited with
+        # rclpy.spin_until_future_complete() on a node that the executor was
+        # already spinning, which is unreliable and could leave the node without
+        # a map forever. Now one request is sent and _on_map_param_response()
+        # handles the reply; a private 5 s timer keeps retrying until success.
+        if self.active_map is not None:
+            return
+        if getattr(self, '_map_retry_timer_async', None) is None:
+            self._map_retry_timer_async = self.create_timer(5.0, self._detect_active_map)
+        if getattr(self, '_map_req_pending', False):
+            if time.time() - self._map_req_time < self._map_detect_timeout:
+                return  # a request is still waiting for its reply
+            self._map_req_pending = False
         srv_name = f'/{self._map_server_node}/get_parameters'
-        client   = self.create_client(GetParameters, srv_name)
+        if getattr(self, '_map_client', None) is None:
+            self._map_client = self.create_client(GetParameters, srv_name)
+        client = self._map_client
+        if not client.service_is_ready():
+            self.get_logger().warn(
+                f'[MapDetect] {srv_name} not available yet — retrying every 5 s.',
+                throttle_duration_sec=10.0)
+            return
 
         self.get_logger().info(
             f'[MapDetect] Contacting {srv_name} '
             f'(timeout: {self._map_detect_timeout}s)...'
         )
 
-        deadline = time.time() + self._map_detect_timeout
-
-        while not client.wait_for_service(timeout_sec=1.0):
-            if time.time() > deadline:
-                self.get_logger().error(
-                    f'[MapDetect] ✗ map_server not available after '
-                    f'{self._map_detect_timeout}s. '
-                    f'Will retry every {self._routes_poll_interval}s automatically.'
-                )
-                return
-            self.get_logger().warn(
-                '[MapDetect] map_server not ready — retrying...',
-                throttle_duration_sec=2.0
-            )
-
         request       = GetParameters.Request()
         request.names = ['yaml_filename']
-        future        = client.call_async(request)
+        future = client.call_async(request)
+        self._map_req_pending = True
+        self._map_req_time = time.time()
+        future.add_done_callback(self._on_map_param_response)
 
-        remaining = max(deadline - time.time(), 2.0)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=remaining)
-
-        if not future.done():
-            self.get_logger().error(
-                '[MapDetect] ✗ Parameter request timed out. '
-                f'Will retry every {self._routes_poll_interval}s automatically.'
-            )
+    def _on_map_param_response(self, future):
+        """Reply handler for the map_path / yaml_filename request."""
+        self._map_req_pending = False
+        if self.active_map is not None:
             return
-
         try:
             response = future.result()
         except Exception as e:
@@ -394,6 +397,11 @@ class IndoorRouteFollower(Node):
             f'[MapDetect] ✓ Active map: "{self.active_map}" '
             f'(yaml_filename: {yaml_path})'
         )
+        # Success: stop retrying and tell the UI right away.
+        if getattr(self, '_map_retry_timer_async', None) is not None:
+            self._map_retry_timer_async.cancel()
+        self._publish_available_routes()
+        self._publish_status()
 
     # =========================================================================
     # Routes poll timer callback

@@ -1,40 +1,38 @@
 #!/bin/bash
 # ============================================================
-# TROV Workspace Launch Script for Indoor
-# Launches (in order):
-#   1. RSLidar SDK
-#   2. WIT IMU
-#   3. RealSense Camera
-#   4. MAVROS
-#   5. Drive bridge
-#   6. AMR Failsafe              ← stops robot + publishes error code on subsystem failure
-#   7. Sensor Health Status  ─┐
-#   8. Beeper                  │  launched in parallel,
-#   9. Battery Monitor         │  poll-based readiness check
-#  10. Floodlight              │  exits as soon as all 4 are alive
-#  11. Headlight Controller   ─┘
-#  12. ROSBridge Server
-#  13. MediaMTX (RTSP/WebRTC Server)
-#  14. ICP Odometry
-#  15. Localization (map_server + AMCL)  ← lifecycle-polled, exits early when ready
-#  16. Delivery Runner
-#  17. Navigation (Nav2 stack)
-#  18. Waypoint Follower Poses
-#  19. Waypoint Recorder
+# TROV Workspace Launch Script for Indoor  (fast-start version)
+#
+# Startup order:
+#   1. RSLidar SDK + WIT IMU                 (sensors, launched first)
+#   2. MAVROS, Drive bridge, Sensor Health,  (independent of odometry, launched
+#      Battery, Floodlight, Headlight,        immediately WITHOUT blocking, so they
+#      ROSBridge, MediaMTX                    warm up while sensors are being gated)
+#   3. Sensor gate: /points, TF, IMU         (checked IN PARALLEL)
+#   4. Odometry (FAST-LIO2 default, ICP selectable — see ODOM_BACKEND)
+#   5. Localization (map_server + AMCL)      (lifecycle-polled, exits early)
+#   6. Delivery Runner
+#   7. Navigation (Nav2)                     (4 lifecycle nodes polled in parallel)
+#   8. Waypoint Follower Poses + Waypoint Recorder
+#
+# AMR Failsafe is currently NOT launched by this script.
 #
 # USAGE:
-#   ./launch_trov.sh              → uses last saved map, or failure2 if none saved
+#   ./launch_trov.sh              → last saved map, or failure2 if none saved
 #   ./launch_trov.sh warehouse2   → uses warehouse2.yaml and saves it
 #
 # MAP PERSISTENCE:
 #   Selected map is saved to ~/.trov_last_map on every localization launch.
-#   On next launch (e.g. via systemd service), that map is automatically restored.
-#   File is created automatically — no manual setup required.
 #
-# INTERACTIVE CONTROLS:
-#   Press 'r' to restart localization (prompts for new map name)
-#   Press 'n' to restart navigation
-#   Press 'q' to quit everything
+# ODOMETRY BACKEND:
+#   ODOM_BACKEND=icp ./launch_trov.sh
+#
+# TIMING:
+#   Every stage prints how long it took, and a summary table is shown at the end.
+#
+# INTERACTIVE CONTROLS (only when run from a terminal; under systemd it just
+# monitors nodes every 30s):
+#   r = restart localization   n = restart navigation   s = node status
+#   m = check /map             f = failsafe code        q = quit
 # ============================================================
 
 # ---------- Colors ----------
@@ -51,14 +49,27 @@ log_warn()        { echo -e "${YELLOW}[WARN]  $(date '+%H:%M:%S') | $1${NC}"; }
 log_error()       { echo -e "${RED}[ERROR] $(date '+%H:%M:%S') | $1${NC}"; }
 log_interactive() { echo -e "${MAGENTA}[>>>]   $(date '+%H:%M:%S') | $1${NC}"; }
 
+# ---------- Stage timing ----------
+SCRIPT_T0=$SECONDS
+STAGE_T0=$SECONDS
+STAGE_LOG=()
+stage_done() {
+    local now=$SECONDS
+    local d=$((now - STAGE_T0))
+    STAGE_LOG+=("$(printf '%-42s %4ss' "$1" "$d")")
+    log_info "⏱  $1 took ${d}s (total so far: $((now - SCRIPT_T0))s)"
+    STAGE_T0=$now
+}
+
 # ---------- Config ----------
 WORKSPACE_DIR="/data/trov_ws"
 ROS2_SETUP="/opt/ros/humble/setup.bash"
 WS_SETUP="$WORKSPACE_DIR/install/setup.bash"
 
 LIDAR_IP="192.168.2.202"
-LIDAR_PING_TIMEOUT=5
-LIDAR_PING_COUNT=3
+LIDAR_PING_TIMEOUT=3
+LIDAR_PING_COUNT=1
+LIDAR_PING_TRIES=3
 
 IMU_PORT="/dev/ttyUSB0"
 FCU_PORT="/dev/ttyACM0"
@@ -66,66 +77,110 @@ FCU_BAUD="57600"
 
 MEDIAMTX_DIR="/home/nvidia"
 
+# Seconds to wait for the first /odom message on each odometry attempt.
+ODOM_TIMEOUT="${ODOM_TIMEOUT:-60}"
+ODOM_MAX_ATTEMPTS="${ODOM_MAX_ATTEMPTS:-3}"
+
+# ── Odometry backend ──────────────────────────────────────────────────────────
+#   fastlio : FAST-LIO2 + RS-Airy built-in IMU + lio_odom_bridge   (default)
+#   icp     : rtabmap icp_odometry + WIT IMU                       (legacy)
+#
+# Measured return-to-home error, 40 m indoor drive, same route:
+#   icp     : 8.40 m position, 54.8 deg heading   (21.0% of distance)
+#   fastlio : 0.12 m position,  0.20 deg heading  ( 0.30% of distance)
+#
+# Both publish /odom and the odom -> base_link TF, so everything downstream is
+# identical either way.
+ODOM_BACKEND="${ODOM_BACKEND:-fastlio}"
+
 # ── Map state persistence ──────────────────────────────────────────────────────
 STATE_FILE="$HOME/.trov_last_map"
 DEFAULT_MAP="failure2"
 
-# Priority: CLI argument → saved state file → hardcoded default
 if [ -n "${1:-}" ]; then
     SELECTED_MAP="$1"
     log_info "Map from CLI argument: $SELECTED_MAP"
 elif [ -f "$STATE_FILE" ]; then
-    SELECTED_MAP="$(cat "$STATE_FILE" | tr -d '[:space:]')"
+    SELECTED_MAP="$(tr -d '[:space:]' < "$STATE_FILE")"
     log_info "Map restored from state file: $SELECTED_MAP"
 else
     SELECTED_MAP="$DEFAULT_MAP"
     log_info "No state file found — using default map: $SELECTED_MAP"
 fi
-# ──────────────────────────────────────────────────────────────────────────────
 
 # Launch files
 ICP_LAUNCH_FILE="icp_odometry_indoor.launch.py"
+FASTLIO_LAUNCH_FILE="fast_lio_odometry_indoor.launch.py"
 LOCALIZATION_LAUNCH_FILE="localization.launch.py"
 NAVIGATION_LAUNCH_FILE="navigation_indoor.launch.py"
 
-# PIDs for cleanup
-declare -A NODE_PIDS   # associative: name → pid
-declare -A NODE_PGIDS  # associative: name → process group id
+# ── Resolve the odometry backend into concrete settings ──────────────────────
+case "$ODOM_BACKEND" in
+    fastlio)
+        ODOM_LAUNCH_FILE="$FASTLIO_LAUNCH_FILE"
+        ODOM_LABEL="FAST-LIO2 Odometry"
+        ODOM_IMU_TOPIC="/rslidar_imu_data"
+        ODOM_PKILL_PATS=("fastlio_mapping" "lio_odom_bridge" "lidar_to_imu_static_tf")
+        WIT_IMU_CRITICAL="no"
+        ;;
+    icp)
+        ODOM_LAUNCH_FILE="$ICP_LAUNCH_FILE"
+        ODOM_LABEL="ICP Odometry"
+        ODOM_IMU_TOPIC="/imu/data"
+        ODOM_PKILL_PATS=("icp_odometry" "rtabmap_odom")
+        WIT_IMU_CRITICAL="yes"
+        ;;
+    *)
+        echo "[ERROR] Unknown ODOM_BACKEND '$ODOM_BACKEND' — use 'fastlio' or 'icp'." >&2
+        exit 1
+        ;;
+esac
 
-# Navigation state flag — used by the background monitor
+# PIDs for cleanup
+declare -A NODE_PIDS    # name → pid
+declare -A NODE_PGIDS   # name → process group id
+
 NAV_FAILED=false
+NAV_MON_PID=""
 
 # ---------- Cleanup ----------
 cleanup() {
     echo ""
     log_warn "Caught exit signal — shutting down all launched processes..."
-
-    # ── Unset trap first to prevent re-entrant calls ──
     trap - EXIT INT TERM HUP
 
-    # ── Step 1: Send SIGINT to all process groups (graceful ROS2 shutdown) ──
+    [ -n "$NAV_MON_PID" ] && kill "$NAV_MON_PID" 2>/dev/null
+
+    # Step 1: SIGINT to every process group (graceful ROS2 shutdown)
+    local name pgid pid i any
     for name in "${!NODE_PGIDS[@]}"; do
         pgid="${NODE_PGIDS[$name]}"
-        if kill -0 -"$pgid" 2>/dev/null; then
+        if kill -0 -- "-$pgid" 2>/dev/null; then
             log_info "Sending SIGINT to $name (PGID -$pgid)"
-            kill -INT -"$pgid" 2>/dev/null || true
+            kill -INT -- "-$pgid" 2>/dev/null || true
         fi
     done
 
-    # ── Step 2: Wait up to 5s for graceful shutdown ──
-    log_info "Waiting 5s for graceful shutdown..."
-    sleep 5
+    # Step 2: wait up to 5s, but stop as soon as everything is gone
+    for i in $(seq 1 10); do
+        any=false
+        for name in "${!NODE_PGIDS[@]}"; do
+            if kill -0 -- "-${NODE_PGIDS[$name]}" 2>/dev/null; then any=true; break; fi
+        done
+        [ "$any" = false ] && break
+        sleep 0.5
+    done
 
-    # ── Step 3: Force kill any survivors with SIGKILL ──
+    # Step 3: SIGKILL survivors
     for name in "${!NODE_PGIDS[@]}"; do
         pgid="${NODE_PGIDS[$name]}"
-        if kill -0 -"$pgid" 2>/dev/null; then
+        if kill -0 -- "-$pgid" 2>/dev/null; then
             log_warn "Force killing $name (PGID -$pgid)"
-            kill -9 -"$pgid" 2>/dev/null || true
+            kill -9 -- "-$pgid" 2>/dev/null || true
         fi
     done
 
-    # ── Step 4: Also kill by PID as fallback ──
+    # Step 4: PID fallback
     for name in "${!NODE_PIDS[@]}"; do
         pid="${NODE_PIDS[$name]}"
         if kill -0 "$pid" 2>/dev/null; then
@@ -134,11 +189,19 @@ cleanup() {
         fi
     done
 
-    # ── Step 5: Kill any lingering processes ──
+    # Step 5: lingering processes
     pkill -9 -f "mavros_node" 2>/dev/null || true
     pkill -9 -f "rslidar_sdk" 2>/dev/null || true
     pkill -9 -f "wit_ros2_imu" 2>/dev/null || true
+    # Both odometry backends are killed regardless of ODOM_BACKEND so a leftover
+    # from a previous run can never fight the current one over /odom and TF.
     pkill -9 -f "icp_odometry" 2>/dev/null || true
+    pkill -9 -f "rtabmap_odom" 2>/dev/null || true
+    pkill -9 -f "fastlio_mapping" 2>/dev/null || true
+    pkill -9 -f "lio_odom_bridge" 2>/dev/null || true
+    # Name-specific on purpose: a bare "static_transform_publisher" would also
+    # kill base_link->lidar_link and every other static TF.
+    pkill -9 -f "lidar_to_imu_static_tf" 2>/dev/null || true
     pkill -9 -f "drive_bridge" 2>/dev/null || true
     pkill -9 -f "drive$" 2>/dev/null || true
     # pkill -9 -f "amr_failsafe_node" 2>/dev/null || true
@@ -167,7 +230,6 @@ cleanup() {
     exit 0
 }
 
-# ── Trap all exit signals ──
 trap cleanup EXIT INT TERM HUP
 
 # ---------- Helper: launch in its own process group and register ----------
@@ -178,14 +240,17 @@ launch_node() {
 
     setsid "$@" &
     local pid=$!
-    local pgid
-    # Retry PGID lookup up to 10 times (handles slow process startup)
+    local pgid i
+    # setsid makes the child its own group leader (PGID == PID). Right after the
+    # fork `ps` can still show OUR group, so wait only until it matches the PID
+    # (normally 1 quick iteration) and otherwise fall back to the PID. This must
+    # never record our own PGID, or a later `kill -- -PGID` would kill this script.
     for i in $(seq 1 10); do
-        sleep 0.2
         pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
-        [ -n "$pgid" ] && [ "$pgid" != "0" ] && break
+        [ "$pgid" = "$pid" ] && break
+        sleep 0.05
     done
-    pgid="${pgid:-$pid}"
+    pgid="$pid"
 
     NODE_PIDS["$name"]=$pid
     NODE_PGIDS["$name"]=$pgid
@@ -195,162 +260,161 @@ launch_node() {
 # ---------- Helper: kill a specific node ----------
 kill_node() {
     local name="$1"
-    local pgid="${NODE_PGIDS[$name]}"
-    local pid="${NODE_PIDS[$name]}"
+    local pgid="${NODE_PGIDS[$name]:-}"
+    local pid="${NODE_PIDS[$name]:-}"
+    local i
 
-    if [ -n "$pgid" ] && kill -0 -"$pgid" 2>/dev/null; then
+    if [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null; then
         log_info "Stopping $name (PGID -$pgid)..."
-        kill -INT -"$pgid" 2>/dev/null || true
-        sleep 2
-        kill -9 -"$pgid" 2>/dev/null || true
+        kill -INT -- "-$pgid" 2>/dev/null || true
+        for i in $(seq 1 6); do
+            kill -0 -- "-$pgid" 2>/dev/null || break
+            sleep 0.5
+        done
+        kill -9 -- "-$pgid" 2>/dev/null || true
     fi
 
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
         kill -9 "$pid" 2>/dev/null || true
     fi
 
-    unset NODE_PIDS["$name"]
-    unset NODE_PGIDS["$name"]
+    unset "NODE_PIDS[$name]"
+    unset "NODE_PGIDS[$name]"
     log_ok "$name stopped."
 }
 
-# ---------- Helper: poll until a node process is alive (replaces fixed sleep) ----------
-# Exits as soon as the process is confirmed alive for 2 consecutive checks.
-# Aborts if the process dies.
-wait_for_node() {
+# ---------- Helper: confirm a launched process is still alive ----------
+# critical=yes → abort the whole script if it died.
+check_alive() {
     local name="$1"
-    local timeout="${2:-30}"
-    local pid="${NODE_PIDS[$name]}"
-    local elapsed=0
-    local alive_count=0
+    local critical="${2:-yes}"
+    local pid="${NODE_PIDS[$name]:-}"
 
-    log_info "Polling $name process (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
-        if ! kill -0 "$pid" 2>/dev/null; then
-            log_error "$name (PID $pid) died during startup — aborting."
-            exit 1
-        fi
-        alive_count=$((alive_count + 1))
-        # Two consecutive alive checks = good enough
-        if [ $alive_count -ge 2 ]; then
-            log_ok "$name is alive (confirmed after ${elapsed}s)."
-            return 0
-        fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    log_ok "$name is alive."
-}
-
-# ---------- Helper: wait for a TF to be available ----------
-wait_for_tf() {
-    local parent="$1"
-    local child="$2"
-    local timeout="$3"
-    local elapsed=0
-
-    log_info "Waiting for TF: $parent → $child (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
-        if ros2 run tf2_ros tf2_echo "$parent" "$child" 2>&1 | grep -q "Translation"; then
-            log_ok "TF $parent → $child is available (after ${elapsed}s)"
-            return 0
-        fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    log_warn "TF $parent → $child not available after ${timeout}s"
-    return 1
-}
-
-# ---------- Helper: wait for IMU data ----------
-wait_for_imu() {
-    local topic="$1"
-    local timeout="$2"
-    local elapsed=0
-
-    log_info "Waiting for IMU data on $topic (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
-        if timeout 2 ros2 topic echo "$topic" --once 2>/dev/null | grep -q "orientation"; then
-            log_ok "IMU data available on $topic (after ${elapsed}s)"
-            return 0
-        fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    log_warn "IMU not publishing on $topic after ${timeout}s"
-    return 1
-}
-
-# ---------- Helper: wait for a topic to have publishers ----------
-wait_for_topic() {
-    local topic="$1"
-    local timeout="$2"
-    local elapsed=0
-
-    log_info "Waiting for topic $topic (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
-        if ros2 topic info "$topic" 2>/dev/null | grep -q "Publisher count: [1-9]"; then
-            log_ok "Topic $topic has publishers (after ${elapsed}s)"
-            return 0
-        fi
-        sleep 1
-        elapsed=$((elapsed + 1))
-    done
-    log_warn "Topic $topic has no publishers after ${timeout}s"
-    return 1
-}
-
-# ---------- Helper: check if map topic is publishing ----------
-check_map_publishing() {
-    if timeout 3 ros2 topic echo /map --once 2>/dev/null | grep -q "data"; then
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        log_ok "  $name → alive (PID $pid)"
         return 0
     fi
+    if [ "$critical" = "yes" ]; then
+        log_error "  $name (PID ${pid:-?}) died during startup — aborting."
+        exit 1
+    fi
+    log_error "  $name → DEAD (PID ${pid:-?}) — continuing anyway"
     return 1
 }
 
-# ---------- Helper: wait for a ROS2 node to appear in node list ----------
-wait_for_ros_node() {
-    local node_name="$1"
-    local timeout="$2"
-    local elapsed=0
+# ============================================================
+# Polling helpers.
+# All deadlines use wall-clock ($SECONDS), NOT a loop counter, because every
+# `ros2` CLI call itself takes 1-3s on a Jetson. Every CLI call is wrapped in
+# `timeout` so a single hung call can never stall a stage.
+# ============================================================
 
-    log_info "Waiting for ROS2 node $node_name to register (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
-        if ros2 node list 2>/dev/null | grep -q "$node_name"; then
-            log_ok "ROS2 node $node_name is registered (after ${elapsed}s)"
+# ---------- Wait for a TF to be available ----------
+wait_for_tf() {
+    local parent="$1" child="$2" timeout_s="$3"
+    local t0=$SECONDS
+    local deadline=$((SECONDS + timeout_s))
+
+    log_info "Waiting for TF: $parent → $child (timeout: ${timeout_s}s)..."
+    while [ $SECONDS -lt $deadline ]; do
+        # tf2_echo never exits by itself — bound it, or this check can hang.
+        if timeout -k 1 4 ros2 run tf2_ros tf2_echo "$parent" "$child" 2>&1 | grep -q "Translation"; then
+            log_ok "TF $parent → $child is available (after $((SECONDS - t0))s)"
             return 0
         fi
-        sleep 1
-        elapsed=$((elapsed + 1))
+        sleep 0.5
     done
-    log_warn "ROS2 node $node_name did not appear after ${timeout}s"
+    log_warn "TF $parent → $child not available after ${timeout_s}s"
     return 1
 }
 
-# ============================================================
-# Lifecycle state polling helper
-# ============================================================
-wait_for_lifecycle() {
-    local node="$1"
-    local timeout="$2"
-    local elapsed=0
+# ---------- Wait for IMU data ----------
+wait_for_imu() {
+    local topic="$1" timeout_s="$2"
+    local t0=$SECONDS
+    local deadline=$((SECONDS + timeout_s))
 
-    log_info "Waiting for lifecycle node $node to become ACTIVE (timeout: ${timeout}s)..."
-
-    while [ $elapsed -lt $timeout ]; do
-        if ros2 node list 2>/dev/null | grep -q "$node"; then
-            local state
-            state=$(ros2 lifecycle get "$node" 2>/dev/null | grep -o 'active')
-            if [ "$state" = "active" ]; then
-                log_ok "$node is ACTIVE (after ${elapsed}s)"
-                return 0
-            fi
+    log_info "Waiting for IMU data on $topic (timeout: ${timeout_s}s)..."
+    while [ $SECONDS -lt $deadline ]; do
+        if timeout 6 ros2 topic echo "$topic" --once 2>/dev/null | grep -q "orientation"; then
+            log_ok "IMU data available on $topic (after $((SECONDS - t0))s)"
+            return 0
         fi
-        sleep 1
-        elapsed=$((elapsed + 1))
+        sleep 0.5
     done
+    log_warn "IMU not publishing on $topic after ${timeout_s}s"
+    return 1
+}
 
-    log_error "$node did NOT become ACTIVE within ${timeout}s"
+# ---------- Wait for a topic to have publishers ----------
+wait_for_topic() {
+    local topic="$1" timeout_s="$2"
+    local t0=$SECONDS
+    local deadline=$((SECONDS + timeout_s))
+
+    log_info "Waiting for topic $topic (timeout: ${timeout_s}s)..."
+    while [ $SECONDS -lt $deadline ]; do
+        if timeout 5 ros2 topic info "$topic" 2>/dev/null | grep -q "Publisher count: [1-9]"; then
+            log_ok "Topic $topic has publishers (after $((SECONDS - t0))s)"
+            return 0
+        fi
+        sleep 0.5
+    done
+    log_warn "Topic $topic has no publishers after ${timeout_s}s"
+    return 1
+}
+
+# ---------- Is /map actually delivering a message? ----------
+check_map_publishing() {
+    timeout 5 ros2 topic echo /map --once 2>/dev/null | grep -q "data"
+}
+
+# ---------- Is /odom actually delivering a message? ----------
+# Needs headroom: CLI startup + DDS discovery alone can eat 2s+.
+odom_publishing() {
+    timeout 6 ros2 topic echo /odom --once 2>/dev/null | grep -q "pose"
+}
+
+# ---------- Wait for a ROS2 node to appear in node list ----------
+wait_for_ros_node() {
+    local node_name="$1" timeout_s="$2"
+    local t0=$SECONDS
+    local deadline=$((SECONDS + timeout_s))
+
+    log_info "Waiting for ROS2 node $node_name to register (timeout: ${timeout_s}s)..."
+    while [ $SECONDS -lt $deadline ]; do
+        if timeout 5 ros2 node list 2>/dev/null | grep -q "$node_name"; then
+            log_ok "ROS2 node $node_name is registered (after $((SECONDS - t0))s)"
+            return 0
+        fi
+        sleep 0.5
+    done
+    log_warn "ROS2 node $node_name did not appear after ${timeout_s}s"
+    return 1
+}
+
+# ---------- Lifecycle: is the node in the ACTIVE state? ----------
+# `ros2 lifecycle get` prints e.g. "active [3]" or "inactive [2]".
+# Anchor on the start of the line — a plain grep for 'active' also matches
+# "inactive" and would report the node as ready too early.
+lifecycle_is_active() {
+    timeout 5 ros2 lifecycle get "$1" 2>/dev/null | grep -qE '^active'
+}
+
+wait_for_lifecycle() {
+    local node="$1" timeout_s="$2"
+    local t0=$SECONDS
+    local deadline=$((SECONDS + timeout_s))
+
+    log_info "Waiting for lifecycle node $node to become ACTIVE (timeout: ${timeout_s}s)..."
+    while [ $SECONDS -lt $deadline ]; do
+        if lifecycle_is_active "$node"; then
+            log_ok "$node is ACTIVE (after $((SECONDS - t0))s)"
+            return 0
+        fi
+        sleep 0.5
+    done
+    log_error "$node did NOT become ACTIVE within ${timeout_s}s"
     return 1
 }
 
@@ -359,20 +423,15 @@ wait_for_lifecycle() {
 # ============================================================
 nav_health_monitor() {
     local check_interval=15
-    # Only poll true lifecycle nodes — NOT lifecycle_manager (it's a regular node)
-    local nav2_nodes=(
-        "/planner_server"
-        "/controller_server"
-        "/bt_navigator"
-        "/behavior_server"
-    )
+    # Only true lifecycle nodes — NOT lifecycle_manager (it's a regular node)
+    local nav2_nodes=("/planner_server" "/controller_server" "/bt_navigator" "/behavior_server")
 
     log_info "[NAV_MONITOR] Navigation health monitor started (checking every ${check_interval}s)"
 
     while true; do
         sleep "$check_interval"
 
-        if [ -n "${NODE_PIDS[navigation]}" ]; then
+        if [ -n "${NODE_PIDS[navigation]:-}" ]; then
             local nav_pid="${NODE_PIDS[navigation]}"
             if ! kill -0 "$nav_pid" 2>/dev/null; then
                 log_error "████████████████████████████████████████████████████"
@@ -380,39 +439,37 @@ nav_health_monitor() {
                 log_error "  PID $nav_pid no longer exists"
                 log_error "  ACTION REQUIRED: Press 'n' to restart navigation"
                 log_error "████████████████████████████████████████████████████"
-                NAV_FAILED=true
                 continue
             fi
         fi
 
-        local any_failed=false
+        local node
         for node in "${nav2_nodes[@]}"; do
-            local state
-            state=$(ros2 lifecycle get "$node" 2>/dev/null | grep -o 'active')
-            if [ "$state" != "active" ]; then
+            if ! lifecycle_is_active "$node"; then
                 log_error "████████████████████████████████████████████████████"
                 log_error "  NAV FAILURE: $node is NOT active"
-                log_error "  Current state: $(ros2 lifecycle get "$node" 2>/dev/null || echo 'node not found')"
+                log_error "  Current state: $(timeout 5 ros2 lifecycle get "$node" 2>/dev/null || echo 'node not found')"
                 log_error "  ACTION REQUIRED: Press 'n' in console to restart navigation"
                 log_error "████████████████████████████████████████████████████"
-                any_failed=true
             fi
         done
-
-        if [ "$any_failed" = true ]; then
-            NAV_FAILED=true
-        else
-            if [ "$NAV_FAILED" = true ]; then
-                log_ok "[NAV_MONITOR] Navigation has recovered — all nodes are ACTIVE"
-                NAV_FAILED=false
-            fi
-        fi
     done
+}
+
+# Start exactly one monitor (restarts used to leak a new one every time).
+# NOTE: this runs in a background subshell, so it can only LOG failures — it
+# cannot update NAV_FAILED in the main shell.
+start_nav_monitor() {
+    [ -n "$NAV_MON_PID" ] && kill "$NAV_MON_PID" 2>/dev/null
+    nav_health_monitor &
+    NAV_MON_PID=$!
+    log_info "Navigation health monitor running in background (PID $NAV_MON_PID)"
 }
 
 # ---------- Function: Launch Localization ----------
 launch_localization() {
     local map_name="${1:-$SELECTED_MAP}"
+    local t0=$SECONDS
 
     log_info "Launching localization stack with map: $map_name"
 
@@ -422,7 +479,7 @@ launch_localization() {
         pkill -9 -f "amcl" 2>/dev/null || true
         pkill -9 -f "pointcloud_to_laserscan" 2>/dev/null || true
         pkill -9 -f "lifecycle_manager_localization" 2>/dev/null || true
-        sleep 2
+        sleep 1
     fi
 
     launch_node "localization" \
@@ -432,60 +489,54 @@ launch_localization() {
     echo "$map_name" > "$STATE_FILE"
     log_ok "Map '$map_name' saved to $STATE_FILE — will be used on next launch."
 
-    # ── Poll for lifecycle_manager_localization to appear ──────────────────
     if ! wait_for_ros_node "lifecycle_manager_localization" 60; then
         log_warn "lifecycle_manager_localization never appeared — localization may be unstable"
         log_warn "Continuing anyway. Press 'r' to restart localization if needed."
         return 1
     fi
 
-    # ── Poll lifecycle states — exits as soon as each is active ───────────
-    # NOTE: lifecycle_manager itself is NOT a lifecycle node — do NOT call
-    # ros2 lifecycle get on it. Only poll the nodes it manages (amcl, map_server).
+    # lifecycle_manager itself is NOT a lifecycle node — only poll what it manages.
+    # amcl and map_server are polled in parallel so one slow node can't hold up the other.
     local loc_ok=true
-    wait_for_lifecycle "/amcl"       90 || { log_warn "AMCL did not become active"; loc_ok=false; }
-    wait_for_lifecycle "/map_server" 30 || { log_warn "map_server did not become active"; loc_ok=false; }
+    wait_for_lifecycle "/amcl" 90 & local p_amcl=$!
+    wait_for_lifecycle "/map_server" 30 & local p_map=$!
+    wait "$p_amcl" || { log_warn "AMCL did not become active"; loc_ok=false; }
+    wait "$p_map"  || { log_warn "map_server did not become active"; loc_ok=false; }
 
-    # Confirm the manager process is still alive (not a lifecycle check — just PID)
     if kill -0 "${NODE_PIDS[localization]}" 2>/dev/null; then
-        log_ok "lifecycle_manager_localization process is alive"
+        log_ok "localization launch process is alive"
     else
         log_warn "localization process died unexpectedly"
         loc_ok=false
     fi
 
-    # ── Poll /map topic — exits as soon as it's publishing ────────────────
     local map_ok=false
-    log_info "Polling /map topic (timeout: 30s)..."
-    local map_elapsed=0
-    while [ $map_elapsed -lt 30 ]; do
+    local map_deadline=$((SECONDS + 15))
+    log_info "Polling /map topic (timeout: 15s)..."
+    while [ $SECONDS -lt $map_deadline ]; do
         if check_map_publishing; then
-            log_ok "Map is publishing! (after ${map_elapsed}s)"
+            log_ok "Map is publishing!"
             map_ok=true
             break
         fi
-        sleep 1
-        map_elapsed=$((map_elapsed + 1))
+        sleep 0.5
     done
-
-    if [ "$map_ok" = false ]; then
-        log_warn "Map not publishing after 30s. Press 'r' to restart localization if needed."
-    fi
+    [ "$map_ok" = false ] && log_warn "Map not publishing after 15s. Press 'r' to restart localization if needed."
 
     if [ "$loc_ok" = true ] && [ "$map_ok" = true ]; then
         log_ok "════════════════════════════════════════════"
-        log_ok "  Localization stack is FULLY ACTIVE"
-        log_ok "  amcl                          → active"
-        log_ok "  lifecycle_manager_localization → active"
-        log_ok "  /map                          → publishing"
+        log_ok "  Localization stack is FULLY ACTIVE ($((SECONDS - t0))s)"
+        log_ok "  amcl        → active"
+        log_ok "  map_server  → active"
+        log_ok "  /map        → publishing"
         log_ok "════════════════════════════════════════════"
     fi
-
     return 0
 }
 
 # ---------- Function: Launch Navigation ----------
 launch_navigation() {
+    local t0=$SECONDS
     log_info "Launching navigation stack..."
 
     if [ -n "${NODE_PIDS[navigation]:-}" ]; then
@@ -499,13 +550,12 @@ launch_navigation() {
         pkill -9 -f "collision_monitor" 2>/dev/null || true
         pkill -9 -f "waypoint_follower" 2>/dev/null || true
         pkill -9 -f "lifecycle_manager_navigation" 2>/dev/null || true
-        sleep 2
+        sleep 1
     fi
 
     launch_node "navigation" \
         ros2 launch trov "$NAVIGATION_LAUNCH_FILE"
 
-    # ── Poll for lifecycle_manager_navigation to appear ────────────────────
     if ! wait_for_ros_node "lifecycle_manager_navigation" 60; then
         log_error "lifecycle_manager_navigation never appeared — navigation launch likely failed"
         log_error "Nav2 will NOT be active. Press 'n' to retry."
@@ -513,17 +563,18 @@ launch_navigation() {
         return 1
     fi
 
-    # ── Poll each lifecycle node — exits as soon as each is active ─────────
-    # NOTE: lifecycle_manager_navigation is NOT a lifecycle node itself.
-    # Only poll the nodes it manages. Manager health = its managed nodes' health.
+    # The four Nav2 nodes are polled IN PARALLEL (they used to be checked one
+    # after another, each with its own 120s budget).
     local nav_ok=true
+    wait_for_lifecycle "/planner_server"    120 & local p1=$!
+    wait_for_lifecycle "/controller_server" 120 & local p2=$!
+    wait_for_lifecycle "/bt_navigator"      120 & local p3=$!
+    wait_for_lifecycle "/behavior_server"   120 & local p4=$!
+    wait "$p1" || { log_error "planner_server never became active";    nav_ok=false; }
+    wait "$p2" || { log_error "controller_server never became active"; nav_ok=false; }
+    wait "$p3" || { log_error "bt_navigator never became active";      nav_ok=false; }
+    wait "$p4" || { log_error "behavior_server never became active";   nav_ok=false; }
 
-    wait_for_lifecycle "/planner_server"    120 || { log_error "planner_server never became active";    nav_ok=false; }
-    wait_for_lifecycle "/controller_server" 120 || { log_error "controller_server never became active"; nav_ok=false; }
-    wait_for_lifecycle "/bt_navigator"      120 || { log_error "bt_navigator never became active";      nav_ok=false; }
-    wait_for_lifecycle "/behavior_server"   120 || { log_error "behavior_server never became active";   nav_ok=false; }
-
-    # Confirm manager process is alive (PID check only — not a lifecycle query)
     if ! kill -0 "${NODE_PIDS[navigation]}" 2>/dev/null; then
         log_error "navigation launch process died during activation"
         nav_ok=false
@@ -531,16 +582,12 @@ launch_navigation() {
 
     if [ "$nav_ok" = true ]; then
         log_ok "════════════════════════════════════════════"
-        log_ok "  Nav2 stack is FULLY ACTIVE"
-        log_ok "  planner_server    → active"
-        log_ok "  controller_server → active"
-        log_ok "  bt_navigator      → active"
-        log_ok "  behavior_server   → active"
+        log_ok "  Nav2 stack is FULLY ACTIVE ($((SECONDS - t0))s)"
+        log_ok "  planner_server / controller_server /"
+        log_ok "  bt_navigator / behavior_server → active"
         log_ok "════════════════════════════════════════════"
         NAV_FAILED=false
-
-        nav_health_monitor &
-        log_info "Navigation health monitor started in background (PID $!)"
+        start_nav_monitor
     else
         log_error "════════════════════════════════════════════"
         log_error "  NAV FAILURE: Nav2 stack did NOT fully activate"
@@ -550,13 +597,9 @@ launch_navigation() {
         log_error "  → Or run: journalctl -u trov -f   to watch logs"
         log_error "════════════════════════════════════════════"
         NAV_FAILED=true
-
-        nav_health_monitor &
-        log_info "Navigation health monitor started in background (PID $!)"
-
+        start_nav_monitor
         return 1
     fi
-
     return 0
 }
 
@@ -574,6 +617,7 @@ interactive_control() {
     log_interactive "=========================================="
     echo ""
 
+    local key new_map name pid err_code fs_pid
     while true; do
         if read -t 5 -r key 2>/dev/null; then
             key="$(echo "$key" | tr -d '[:space:]')"
@@ -621,27 +665,24 @@ interactive_control() {
                     echo ""
                     ;;
                 f|F)
-                    # ── Show current failsafe error code ──────────────────────
                     echo ""
                     log_interactive "Checking AMR Failsafe error code..."
-                    local err_code
                     err_code=$(timeout 3 ros2 topic echo /amr/failsafe/error_code \
                                    --once 2>/dev/null | grep "data:" | awk '{print $2}')
                     if [ -n "$err_code" ]; then
                         case "$err_code" in
                             "0x00") log_ok    "  Failsafe: $err_code — All systems nominal" ;;
-                            "0x0R") log_error "  Failsafe: $err_code — ICP Odometry failure" ;;
+                            "0x0R") log_error "  Failsafe: $err_code — Odometry failure [$ODOM_BACKEND]" ;;
                             "0x0L") log_error "  Failsafe: $err_code — AMCL Localization failure" ;;
                             "0x0N") log_error "  Failsafe: $err_code — Navigation failure" ;;
                             *)      log_warn  "  Failsafe: $err_code — Unknown code" ;;
                         esac
                     else
-                        log_warn "  Could not read /amr/failsafe/error_code (node may be starting)"
+                        log_warn "  Could not read /amr/failsafe/error_code (node not running?)"
                     fi
 
-                    # Show whether failsafe node process is alive
                     if [ -n "${NODE_PIDS[amr_failsafe]:-}" ]; then
-                        local fs_pid="${NODE_PIDS[amr_failsafe]}"
+                        fs_pid="${NODE_PIDS[amr_failsafe]}"
                         if kill -0 "$fs_pid" 2>/dev/null; then
                             log_ok "  amr_failsafe process → PID $fs_pid (ALIVE)"
                         else
@@ -669,13 +710,12 @@ echo ""
 
 log_info "Selected map: $SELECTED_MAP"
 
-# ---------- 1. Source ROS2 ----------
+# ---------- 1. Source ROS2 + workspace ----------
 log_info "Sourcing ROS2 Humble: $ROS2_SETUP"
 [ -f "$ROS2_SETUP" ] || { log_error "ROS2 setup not found: $ROS2_SETUP"; exit 1; }
 source "$ROS2_SETUP"
 log_ok "ROS2 Humble sourced."
 
-# ---------- 2. Source workspace ----------
 log_info "Sourcing workspace: $WS_SETUP"
 [ -f "$WS_SETUP" ] || { log_error "Workspace not found. Run colcon build first."; exit 1; }
 source "$WS_SETUP"
@@ -684,28 +724,45 @@ log_ok "Workspace sourced."
 log_info "ROS_DISTRO     = $ROS_DISTRO"
 log_info "ROS_DOMAIN_ID  = ${ROS_DOMAIN_ID:-0 (default)}"
 
-# ---------- 3. Check LiDAR ----------
+# Start the ROS 2 daemon once so every later `ros2 topic/node/lifecycle` call
+# reuses cached discovery instead of re-discovering the graph from scratch.
+log_info "Starting ros2 daemon (caches discovery for all later CLI calls)..."
+ros2 daemon start >/dev/null 2>&1 || log_warn "ros2 daemon failed to start — CLI calls will be slower"
+stage_done "Source ROS + start daemon"
+
+# ---------- 2. Hardware pre-checks ----------
 echo ""
 log_info "Pinging LiDAR at $LIDAR_IP ..."
-if ping -c "$LIDAR_PING_COUNT" -W "$LIDAR_PING_TIMEOUT" "$LIDAR_IP" > /dev/null 2>&1; then
+lidar_reachable=false
+for _try in $(seq 1 "$LIDAR_PING_TRIES"); do
+    if ping -c "$LIDAR_PING_COUNT" -W "$LIDAR_PING_TIMEOUT" "$LIDAR_IP" > /dev/null 2>&1; then
+        lidar_reachable=true
+        break
+    fi
+done
+if [ "$lidar_reachable" = true ]; then
     log_ok "LiDAR reachable."
 else
     log_error "Cannot reach LiDAR at $LIDAR_IP — check cable / IP / power."
     exit 1
 fi
 
-# ---------- 4. Check IMU ----------
 echo ""
 log_info "Checking IMU port: $IMU_PORT"
 if [ -e "$IMU_PORT" ]; then
     log_ok "IMU port found: $IMU_PORT"
 else
-    log_error "IMU port $IMU_PORT not found. Available ports:"
     ls /dev/ttyUSB* 2>/dev/null || echo "  (none)"
-    exit 1
+    if [ "$ODOM_BACKEND" = "icp" ]; then
+        log_error "IMU port $IMU_PORT not found — ICP odometry requires the WIT IMU."
+        exit 1
+    else
+        log_warn "IMU port $IMU_PORT not found."
+        log_warn "ODOM_BACKEND=$ODOM_BACKEND uses the RS-Airy built-in IMU, so odometry"
+        log_warn "is unaffected. Continuing — but anything else on /imu/data will be down."
+    fi
 fi
 
-# ---------- 5. Check FCU (Pixhawk) ----------
 echo ""
 log_info "Checking FCU port: $FCU_PORT"
 if [ -e "$FCU_PORT" ]; then
@@ -716,29 +773,30 @@ else
     ls /dev/ttyACM* 2>/dev/null || echo "  (none)"
 fi
 
-# ---------- 6. Check MediaMTX ----------
 echo ""
 log_info "Checking MediaMTX binary: $MEDIAMTX_DIR/mediamtx"
+MEDIAMTX_OK=false
 if [ -x "$MEDIAMTX_DIR/mediamtx" ]; then
     log_ok "MediaMTX binary found and executable."
+    MEDIAMTX_OK=true
 else
     log_warn "MediaMTX not found or not executable at $MEDIAMTX_DIR/mediamtx"
     log_warn "Media streaming will not be available."
 fi
 
-# ---------- 7. Check launch files exist ----------
+# ---------- 3. Launch files + map exist ----------
 echo ""
 log_info "Checking launch files..."
 
-ICP_LAUNCH_PATH="$WORKSPACE_DIR/install/trov/share/trov/launch/indoor/$ICP_LAUNCH_FILE"
-LOC_LAUNCH_PATH="$WORKSPACE_DIR/install/trov/share/trov/launch/indoor/$LOCALIZATION_LAUNCH_FILE"
-NAV_LAUNCH_PATH="$WORKSPACE_DIR/install/trov/share/trov/launch/indoor/$NAVIGATION_LAUNCH_FILE"
+LAUNCH_DIR="$WORKSPACE_DIR/install/trov/share/trov/launch/indoor"
+ODOM_LAUNCH_PATH="$LAUNCH_DIR/$ODOM_LAUNCH_FILE"
+LOC_LAUNCH_PATH="$LAUNCH_DIR/$LOCALIZATION_LAUNCH_FILE"
+NAV_LAUNCH_PATH="$LAUNCH_DIR/$NAVIGATION_LAUNCH_FILE"
 
-[ -f "$ICP_LAUNCH_PATH" ] && log_ok "ICP: $ICP_LAUNCH_FILE" || { log_error "ICP launch not found: $ICP_LAUNCH_PATH"; exit 1; }
-[ -f "$LOC_LAUNCH_PATH" ] && log_ok "Localization: $LOCALIZATION_LAUNCH_FILE" || { log_error "Localization launch not found: $LOC_LAUNCH_PATH"; exit 1; }
-[ -f "$NAV_LAUNCH_PATH" ] && log_ok "Navigation: $NAVIGATION_LAUNCH_FILE" || { log_error "Navigation launch not found: $NAV_LAUNCH_PATH"; exit 1; }
+[ -f "$ODOM_LAUNCH_PATH" ] && log_ok "Odometry [$ODOM_BACKEND]: $ODOM_LAUNCH_FILE" || { log_error "Odometry launch not found: $ODOM_LAUNCH_PATH"; exit 1; }
+[ -f "$LOC_LAUNCH_PATH" ]  && log_ok "Localization: $LOCALIZATION_LAUNCH_FILE"      || { log_error "Localization launch not found: $LOC_LAUNCH_PATH"; exit 1; }
+[ -f "$NAV_LAUNCH_PATH" ]  && log_ok "Navigation: $NAVIGATION_LAUNCH_FILE"          || { log_error "Navigation launch not found: $NAV_LAUNCH_PATH"; exit 1; }
 
-# ── Validate selected map exists ──────────────────────────────────────────────
 MAPS_DIR="$WORKSPACE_DIR/install/trov/share/trov/maps"
 MAP_PATH="$MAPS_DIR/$SELECTED_MAP.yaml"
 if [ ! -f "$MAP_PATH" ]; then
@@ -759,269 +817,220 @@ if [ ! -f "$MAP_PATH" ]; then
     fi
 fi
 log_ok "Map '$SELECTED_MAP' found."
+stage_done "Pre-flight checks"
 
 # ============================================================
 echo ""
-echo -e "${CYAN}--- Starting hardware drivers ---${NC}"
+echo -e "${CYAN}--- Launching drivers and peripherals (non-blocking) ---${NC}"
 echo ""
 cd "$WORKSPACE_DIR"
 
-# ---------- 8. RSLidar SDK ----------
-# No dependency — launch immediately and poll for /points topic
+# Everything below is independent of odometry, so it is launched back-to-back
+# with NO waiting. It warms up while the sensor gate (next section) runs, and a
+# single liveness check at the end replaces ~12 separate blocking waits.
+
+# ---------- Sensors ----------
 launch_node "rslidar_sdk" \
     ros2 launch rslidar_sdk humble_start.py
 
-# ---------- 9. WIT IMU ----------
-# No dependency — launch immediately and poll for /imu/data topic
 launch_node "wit_imu" \
     ros2 launch wit_ros2_imu rviz_and_imu.launch.py
 
-# ── Poll both drivers alive (2 consecutive checks, ~2s each max) ──────────────
-# We don't block on topics here — the topic polls happen later right before
-# whoever needs them (ICP). This lets LiDAR + IMU warm up in parallel with
-# MAVROS + drive_bridge below.
-wait_for_node "rslidar_sdk" 15
-wait_for_node "wit_imu"     15
-
-# ---------- 10. RealSense Camera (disabled) ----------
+# ---------- RealSense Camera (disabled) ----------
 #launch_node "realsense_camera" \
 #    ros2 launch realsense2_camera rs_launch.py
-#wait_for_node "realsense_camera" 10
 
-# ---------- 11. MAVROS ----------
-# Depends on: FCU port (already checked above)
-echo ""
-echo -e "${CYAN}--- Starting MAVROS ---${NC}"
-echo ""
+# ---------- MAVROS ----------
 cd "$HOME"
 launch_node "mavros" \
-   ros2 run mavros mavros_node \
-       --ros-args -p fcu_url:=serial://"$FCU_PORT":"$FCU_BAUD"
-
-# Poll for /mavros/state topic — proves MAVROS is actually talking to the FCU.
-# This replaces the old blind 15s sleep.
-wait_for_topic "/mavros/state" 30 || log_warn "MAVROS /mavros/state not seen — FCU connection may have #issues"
+    ros2 run mavros mavros_node \
+        --ros-args -p fcu_url:=serial://"$FCU_PORT":"$FCU_BAUD"
 cd "$WORKSPACE_DIR"
 
-# ============================================================
-echo ""
-echo -e "${CYAN}--- Starting drive bridge ---${NC}"
-echo ""
+# Verify MAVROS in the background; it is only collected at the very end so it
+# can never delay odometry.
+( wait_for_topic "/mavros/state" 30 >/dev/null 2>&1 ) &
+MAV_CHECK_PID=$!
 
-# ---------- 12. Drive Bridge ----------
-# Depends on: MAVROS (needs FCU comms path set up)
+# ---------- Drive bridge ----------
 launch_node "drive_bridge" \
-   ros2 run cpp_pubsub drive
-wait_for_node "drive_bridge" 10
+    ros2 run cpp_pubsub drive
 
-# ============================================================
-echo ""
-echo -e "${CYAN}--- Starting peripheral nodes (parallel) ---${NC}"
-echo ""
+# ---------- Peripherals ----------
+launch_node "sensors_health_status" ros2 run trov sensors_health_status
+launch_node "battery_monitor"       ros2 run trov battery_monitor
+launch_node "floodlight"            ros2 run trov floodlight.py
+launch_node "headlight_controller"  ros2 run trov headlight_controller
 
-# ---------- 13. Sensor Health Status ----------
-launch_node "sensors_health_status" \
-    ros2 run trov sensors_health_status
-
-# ---------- 14. Battery Monitor ----------
-launch_node "battery_monitor" \
-    ros2 run trov battery_monitor
-
-# ---------- 15. Floodlight ----------
-launch_node "floodlight" \
-    ros2 run trov floodlight.py
-
-# ---------- 16. Headlight Controller ----------
-launch_node "headlight_controller" \
-    ros2 run trov headlight_controller
-
-# ── Poll all 4 peripheral nodes — exits as soon as all are alive ──────────────
-# No fixed sleep. Each is checked every 1s up to 15s total.
-log_info "Polling peripheral nodes until all are alive (timeout: 15s)..."
-peripheral_timeout=15
-peripheral_elapsed=0
-while [ $peripheral_elapsed -lt $peripheral_timeout ]; do
-    all_alive=true
-    for pname in sensors_health_status battery_monitor floodlight headlight_controller; do
-        pid="${NODE_PIDS[$pname]}"
-        if ! kill -0 "$pid" 2>/dev/null; then
-            all_alive=false
-            break
-        fi
-    done
-    if [ "$all_alive" = true ]; then
-        log_ok "All peripheral nodes are alive (after ${peripheral_elapsed}s)"
-        break
-    fi
-    sleep 1
-    peripheral_elapsed=$((peripheral_elapsed + 1))
-done
-
-# Final status report — continue even if some died
-for pname in sensors_health_status battery_monitor floodlight headlight_controller; do
-    pid="${NODE_PIDS[$pname]}"
-    if kill -0 "$pid" 2>/dev/null; then
-        log_ok "  $pname → alive (PID $pid)"
-    else
-        log_error "  $pname → DEAD (PID $pid) — continuing anyway"
-    fi
-done
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ============================================================
-echo ""
-echo -e "${CYAN}--- Starting ROSBridge Server ---${NC}"
-echo ""
-
-# ---------- 17. ROSBridge WebSocket Server ----------
+# ---------- ROSBridge ----------
 launch_node "rosbridge_server" \
     ros2 launch rosbridge_server rosbridge_websocket_launch.xml \
     call_services_in_new_thread:=true \
     send_action_goals_in_new_thread:=true \
     default_call_service_timeout:=5.0
-wait_for_node "rosbridge_server" 10
 
-# ============================================================
-echo ""
-echo -e "${CYAN}--- Starting MediaMTX (RTSP/WebRTC Server) ---${NC}"
-echo ""
-
-# ---------- 18. MediaMTX ----------
-if [ -x "$MEDIAMTX_DIR/mediamtx" ]; then
+# ---------- MediaMTX ----------
+if [ "$MEDIAMTX_OK" = true ]; then
     cd "$MEDIAMTX_DIR"
-    launch_node "mediamtx" \
-        ./mediamtx
-    wait_for_node "mediamtx" 10
+    launch_node "mediamtx" ./mediamtx
     cd "$WORKSPACE_DIR"
 else
     log_warn "Skipping MediaMTX — binary not found."
 fi
+stage_done "Launch drivers + peripherals"
 
 # ============================================================
 echo ""
-echo -e "${CYAN}--- Starting ICP Odometry ---${NC}"
+echo -e "${CYAN}--- Sensor gate for $ODOM_LABEL [backend: $ODOM_BACKEND] ---${NC}"
 echo ""
 
-# ── Gate: all 3 sensor prerequisites must be confirmed before ICP launches ────
-# These polls exit as soon as the condition is met — no fixed sleep.
-# ICP MUST NOT start blind; if sensors aren't ready it will crash or drift.
+# The three prerequisites are independent, so they are checked IN PARALLEL
+# (worst case = slowest single check, not the sum of all three).
+#   fastlio -> /rslidar_imu_data (RS-Airy built-in)    icp -> /imu/data (WIT IMU)
+log_info "Confirming sensor prerequisites for $ODOM_LABEL (parallel)..."
 
-log_info "Confirming sensor prerequisites for ICP..."
+wait_for_topic "/points"                  45 & g1=$!
+wait_for_tf    "base_link" "lidar_link"   30 & g2=$!
+wait_for_imu   "$ODOM_IMU_TOPIC"          30 & g3=$!
 
-lidar_ok=true
-tf_ok=true
-imu_ok=true
-
-wait_for_topic "/points"              45 || { log_warn "LiDAR /points not ready";          lidar_ok=false; }
-wait_for_tf    "base_link" "lidar_link" 30 || { log_warn "TF base_link→lidar_link not ready"; tf_ok=false;    }
-wait_for_imu   "/imu/data"            30 || { log_warn "IMU /imu/data not ready";           imu_ok=false;   }
+lidar_ok=true; tf_ok=true; imu_ok=true
+wait "$g1" || { log_warn "LiDAR /points not ready";             lidar_ok=false; }
+wait "$g2" || { log_warn "TF base_link→lidar_link not ready";   tf_ok=false;    }
+wait "$g3" || { log_warn "IMU $ODOM_IMU_TOPIC not ready";       imu_ok=false;   }
 
 if [ "$lidar_ok" = false ] || [ "$tf_ok" = false ] || [ "$imu_ok" = false ]; then
-    log_warn "One or more ICP prerequisites are not fully ready — ICP may be unreliable."
+    log_warn "One or more prerequisites are not fully ready — $ODOM_LABEL may be unreliable."
     log_warn "Proceeding anyway. Check sensor connections if odometry fails."
 fi
 
-# ── ICP launch with retry — polls /odom instead of sleeping ───────────────────
-max_attempts=3
-icp_success=false
+# Single liveness check for everything launched above (they've had the whole
+# gate duration to start, so no per-node waiting is needed).
+log_info "Verifying launched nodes are alive..."
+check_alive "rslidar_sdk"            yes
+check_alive "wit_imu"                "$WIT_IMU_CRITICAL"
+check_alive "mavros"                 no
+check_alive "drive_bridge"           yes
+check_alive "sensors_health_status"  no
+check_alive "battery_monitor"        no
+check_alive "floodlight"             no
+check_alive "headlight_controller"   no
+check_alive "rosbridge_server"       yes
+[ "$MEDIAMTX_OK" = true ] && check_alive "mediamtx" yes
+stage_done "Sensor gate (parallel) + liveness check"
 
-for attempt in $(seq 1 $max_attempts); do
-    log_info "ICP Odometry launch attempt $attempt/$max_attempts"
+# ============================================================
+echo ""
+echo -e "${CYAN}--- Starting $ODOM_LABEL  [backend: $ODOM_BACKEND] ---${NC}"
+echo ""
 
-    launch_node "icp_odometry" \
-        ros2 launch trov "$ICP_LAUNCH_FILE"
+odom_success=false
+for attempt in $(seq 1 "$ODOM_MAX_ATTEMPTS"); do
+    log_info "$ODOM_LABEL launch attempt $attempt/$ODOM_MAX_ATTEMPTS"
 
-    # Poll for /odom — exits as soon as ICP is publishing.
-    # Max 60s per attempt. No blind sleep.
-    log_info "Polling for /odom from ICP (timeout: 60s)..."
-    icp_elapsed=0
-    icp_ready=false
-    while [ $icp_elapsed -lt 60 ]; do
-        # First confirm the process hasn't crashed
-        if ! kill -0 "${NODE_PIDS[icp_odometry]}" 2>/dev/null; then
-            log_warn "ICP process died on attempt $attempt"
+    launch_node "odometry" \
+        ros2 launch trov "$ODOM_LAUNCH_FILE"
+
+    log_info "Polling for /odom from $ODOM_LABEL (timeout: ${ODOM_TIMEOUT}s)..."
+    odom_t0=$SECONDS
+    odom_deadline=$((SECONDS + ODOM_TIMEOUT))
+    odom_ready=false
+    while [ $SECONDS -lt $odom_deadline ]; do
+        if ! kill -0 "${NODE_PIDS[odometry]}" 2>/dev/null; then
+            log_warn "$ODOM_LABEL process died on attempt $attempt"
             break
         fi
-        # Then check if /odom is publishing
-        if timeout 2 ros2 topic echo /odom --once 2>/dev/null | grep -q "pose"; then
-            log_ok "ICP Odometry publishing /odom (attempt $attempt, after ${icp_elapsed}s)"
-            icp_ready=true
+        if odom_publishing; then
+            log_ok "$ODOM_LABEL publishing /odom (attempt $attempt, after $((SECONDS - odom_t0))s)"
+            odom_ready=true
             break
         fi
-        sleep 1
-        icp_elapsed=$((icp_elapsed + 1))
+        sleep 0.5
     done
 
-    if [ "$icp_ready" = true ]; then
-        icp_success=true
+    if [ "$odom_ready" = true ]; then
+        odom_success=true
         break
     fi
 
-    log_warn "ICP Odometry failed on attempt $attempt"
-    if [ $attempt -lt $max_attempts ]; then
-        pkill -9 -f "icp_odometry" 2>/dev/null || true
-        sleep 2
+    log_warn "$ODOM_LABEL failed on attempt $attempt"
+    if [ "$attempt" -lt "$ODOM_MAX_ATTEMPTS" ]; then
+        kill_node "odometry"
+        for pat in "${ODOM_PKILL_PATS[@]}"; do
+            pkill -9 -f "$pat" 2>/dev/null || true
+        done
+        sleep 1
     fi
 done
 
-if [ "$icp_success" = false ]; then
-    log_error "ICP Odometry failed after $max_attempts attempts"
+if [ "$odom_success" = false ]; then
+    log_error "$ODOM_LABEL failed after $ODOM_MAX_ATTEMPTS attempts"
     log_error "Continuing anyway — odometry will not work. Localization may drift."
 fi
+stage_done "Odometry ($ODOM_BACKEND, attempts used: ${attempt:-1})"
 
 # ============================================================
 echo ""
 echo -e "${CYAN}--- Starting Localization (map_server + AMCL) ---${NC}"
 echo ""
 
-# ── Gate: /odom must be available before localization starts ──────────────────
-# AMCL fuses odometry with laser — launching without /odom = bad initial pose.
-wait_for_topic "/odom" 30 || log_warn "/odom not available — AMCL may have poor initial pose"
-
+# /odom was just confirmed by the odometry stage above — no second wait here.
 launch_localization
+stage_done "Localization (map_server + AMCL)"
 
 # ============================================================
 echo ""
 echo -e "${CYAN}--- Starting Delivery Runner ---${NC}"
 echo ""
 
-# ---------- 19. Delivery Runner ----------
-# No hard dependency on nav — can start as soon as localization is up
 launch_node "delivery_runner" \
     ros2 run trov delivery_runner.py
-wait_for_node "delivery_runner" 10
 
 # ============================================================
 echo ""
 echo -e "${CYAN}--- Starting Navigation (Nav2 stack) ---${NC}"
 echo ""
 
-# ── Gate: /map must be publishing before Nav2 launches ────────────────────────
-# Nav2 costmaps depend on the map — launching without it causes immediate failure.
-wait_for_topic "/map" 30 || log_warn "/map not available — Nav2 costmaps may fail to initialize"
+# launch_localization already confirmed /map is delivering data; this is only a
+# quick publisher sanity check before Nav2's costmaps need it.
+wait_for_topic "/map" 10 || log_warn "/map not available — Nav2 costmaps may fail to initialize"
 
 launch_navigation
+stage_done "Navigation (Nav2)"
 
 # ============================================================
 echo ""
 echo -e "${CYAN}--- Starting Waypoint nodes ---${NC}"
 echo ""
 
-# ---------- 20. Waypoint Follower Poses ----------
 launch_node "waypoint_follower_poses" \
     ros2 run trov waypoint_follower_poses.py
-wait_for_node "waypoint_follower_poses" 10
 
-# ---------- 21. Waypoint Recorder ----------
 launch_node "waypoint_recorder" \
     ros2 run trov waypoint_recorder.py
-wait_for_node "waypoint_recorder" 10
+
+sleep 1
+check_alive "delivery_runner"          yes
+check_alive "waypoint_follower_poses"  yes
+check_alive "waypoint_recorder"        yes
+
+# Collect the background MAVROS check that has been running since launch.
+if wait "$MAV_CHECK_PID"; then
+    log_ok "MAVROS /mavros/state has publishers"
+else
+    log_warn "MAVROS /mavros/state not seen — FCU connection may have issues"
+fi
+stage_done "Delivery runner + waypoint nodes"
 
 # ============================================================
 echo ""
 echo -e "${GREEN}============================================${NC}"
-echo -e "${GREEN}   All nodes launched!                     ${NC}"
+echo -e "${GREEN}   All nodes launched!  ($((SECONDS - SCRIPT_T0))s total)${NC}"
 echo -e "${GREEN}============================================${NC}"
+echo ""
+log_info "Startup time per stage:"
+for line in "${STAGE_LOG[@]}"; do
+    log_info "  $line"
+done
 echo ""
 log_info "Active nodes:"
 for name in "${!NODE_PIDS[@]}"; do
@@ -1034,32 +1043,36 @@ for name in "${!NODE_PIDS[@]}"; do
 done
 echo ""
 log_info "Selected map: $SELECTED_MAP"
+log_info "Odometry backend: $ODOM_BACKEND ($ODOM_LABEL) — IMU: $ODOM_IMU_TOPIC"
 log_info "Map state file: $STATE_FILE"
 log_info "Navigation status: $([ "$NAV_FAILED" = true ] && echo 'FAILED — restart service to retry' || echo 'OK')"
-log_info "Failsafe error code topic: /amr/failsafe/error_code  "
+log_info "Failsafe error code topic: /amr/failsafe/error_code"
 log_info "ROSBridge WebSocket available at ws://<robot_ip>:9090"
 log_info "MediaMTX RTSP available at rtsp://<robot_ip>:8554"
 log_info "MediaMTX WebRTC available at http://<robot_ip>:8889"
 log_info "Headlight topic: /trov/headlight (publish true/false)"
 echo ""
 
-# ---------- Keep-alive loop (no TTY needed under systemd) ----------
-# Monitors all launched nodes every 30s and logs any that have died.
-# Script stays alive so systemd manages the process lifetime.
+# ---------- Keep-alive ----------
+# Terminal → interactive controls. systemd (no TTY) → monitor nodes every 30s.
 # To stop:    sudo systemctl stop trov
 # To restart: sudo systemctl restart trov
-log_info "Stack is running. Monitoring nodes every 30s..."
-while true; do
-    sleep 30
-    dead_nodes=""
-    for name in "${!NODE_PIDS[@]}"; do
-        pid="${NODE_PIDS[$name]}"
-        if ! kill -0 "$pid" 2>/dev/null; then
-            dead_nodes="$dead_nodes $name"
+if [ -t 0 ]; then
+    interactive_control
+else
+    log_info "Stack is running. Monitoring nodes every 30s..."
+    while true; do
+        sleep 30
+        dead_nodes=""
+        for name in "${!NODE_PIDS[@]}"; do
+            pid="${NODE_PIDS[$name]}"
+            if ! kill -0 "$pid" 2>/dev/null; then
+                dead_nodes="$dead_nodes $name"
+            fi
+        done
+        if [ -n "$dead_nodes" ]; then
+            log_error "Dead nodes detected:$dead_nodes"
+            log_error "Use: sudo systemctl restart trov"
         fi
     done
-    if [ -n "$dead_nodes" ]; then
-        log_error "Dead nodes detected:$dead_nodes"
-        log_error "Use: sudo systemctl restart trov"
-    fi
-done
+fi

@@ -69,7 +69,7 @@ amcl:
     save_pose_rate: 0.5
 
     # ── Initial pose ──────────────────────────────────────────────────────
-    set_initial_pose: true
+    set_initial_pose: false
     always_reset_initial_pose: false
     first_map_only: false
 

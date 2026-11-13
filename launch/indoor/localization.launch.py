@@ -14,7 +14,7 @@ def generate_launch_description():
     declare_map_name_cmd = DeclareLaunchArgument(
         'map_name',
         #default_value='adibatla_indoor_box',
-        default_value='pinaka',
+        default_value='507_test',
         description='Map file name without .yaml extension (e.g. indoor3, testin1)'
     )
     declare_use_sim_time_cmd = DeclareLaunchArgument(

@@ -20,6 +20,7 @@
 #  16. Outdoor Waypoint Follower
 #  17. Delivery Runner Outdoor
 #  18. Navigation Outdoor
+#  18b. RC Delivery Trigger (RC ch5 switch -> /delivery/go, /delivery/unloaded)
 #  19. MediaMTX
 #  20. Rosbridge_server
 #
@@ -61,6 +62,22 @@ MEDIAMTX_BIN="$HOME/mediamtx"
 
 # Launch files
 ICP_LAUNCH_FILE="icp_odometry_outdoor.launch.py"
+FASTLIO_LAUNCH_FILE="fast_lio_odometry_outdoor.launch.py"
+
+# ── Odometry backend ─────────────────────────────────────────────────────────
+#   fastlio : FAST-LIO2 + RS-Airy built-in IMU + lio_odom_bridge  (default)
+#   icp     : rtabmap icp_odometry + WIT IMU                      (previous stack)
+# Both publish /odom and the odom -> base_link TF, so nothing downstream changes.
+# TO FALL BACK TO ICP: change the default below from fastlio to icp.
+ODOM_BACKEND="${ODOM_BACKEND:-fastlio}"
+if [ "$ODOM_BACKEND" = "icp" ]; then
+    ODOM_LAUNCH_FILE="$ICP_LAUNCH_FILE"
+    ODOM_IMU_TOPIC="/imu/data"
+else
+    ODOM_BACKEND="fastlio"
+    ODOM_LAUNCH_FILE="$FASTLIO_LAUNCH_FILE"
+    ODOM_IMU_TOPIC="/rslidar_imu_data"
+fi
 
 # PIDs for cleanup
 declare -A NODE_PIDS   # associative: name → pid
@@ -180,11 +197,15 @@ cleanup() {
     pkill -9 -f "realsense2_camera" 2>/dev/null || true
     pkill -9 -f "segformer_node" 2>/dev/null || true
     pkill -9 -f "icp_odometry" 2>/dev/null || true
+    pkill -9 -f "fastlio_mapping" 2>/dev/null || true
+    pkill -9 -f "lio_odom_bridge" 2>/dev/null || true
+    pkill -9 -f "pointcloud_to_laserscan" 2>/dev/null || true
     pkill -9 -f "drive_outdoor" 2>/dev/null || true
     pkill -9 -f "outdoor_lidar_localization" 2>/dev/null || true
     pkill -9 -f "outdoor_waypoints_recorder" 2>/dev/null || true
     pkill -9 -f "outdoor_waypoints_follower" 2>/dev/null || true
     pkill -9 -f "delivery_runner_outdoor" 2>/dev/null || true
+    pkill -9 -f "rc_delivery_trigger" 2>/dev/null || true
     pkill -9 -f "pcd_to_grid_node" 2>/dev/null || true
     pkill -9 -f "rosbridge_websocket" 2>/dev/null || true
     pkill -9 -f "controller_server" 2>/dev/null || true
@@ -250,8 +271,10 @@ preflight_cleanup() {
     local patterns=(
         mavros_node rslidar_sdk rslidar_to_lio wit_ros2_imu rviz2
         realsense2_camera segformer_node icp_odometry drive_outdoor
+        fastlio_mapping lio_odom_bridge pointcloud_to_laserscan
         outdoor_lidar_localization outdoor_waypoints_recorder
         outdoor_waypoints_follower delivery_runner_outdoor pcd_to_grid_node rosbridge_websocket
+        rc_delivery_trigger
         controller_server planner_server behavior_server smoother_server
         bt_navigator velocity_smoother collision_monitor lifecycle_manager
         component_container robot_state_publisher static_transform_publisher
@@ -339,16 +362,15 @@ wait_for_node() {
 wait_for_topic() {
     local topic="$1"
     local timeout="$2"
-    local elapsed=0
+    local start=$SECONDS
 
     log_info "Waiting for topic $topic (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
+    while [ $((SECONDS - start)) -lt $timeout ]; do
         if ros2 topic info "$topic" 2>/dev/null | grep -q "Publisher count: [1-9]"; then
-            log_ok "Topic $topic has publishers (after ${elapsed}s)"
+            log_ok "Topic $topic has publishers (after $((SECONDS - start))s)"
             return 0
         fi
         sleep 1
-        elapsed=$((elapsed + 1))
     done
     log_warn "Topic $topic has no publishers after ${timeout}s"
     return 1
@@ -359,16 +381,15 @@ wait_for_tf() {
     local parent="$1"
     local child="$2"
     local timeout="$3"
-    local elapsed=0
+    local start=$SECONDS
 
     log_info "Waiting for TF: $parent → $child (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
+    while [ $((SECONDS - start)) -lt $timeout ]; do
         if ros2 run tf2_ros tf2_echo "$parent" "$child" 2>&1 | grep -q "Translation"; then
-            log_ok "TF $parent → $child is available (after ${elapsed}s)"
+            log_ok "TF $parent → $child is available (after $((SECONDS - start))s)"
             return 0
         fi
         sleep 1
-        elapsed=$((elapsed + 1))
     done
     log_warn "TF $parent → $child not available after ${timeout}s"
     return 1
@@ -378,16 +399,15 @@ wait_for_tf() {
 wait_for_imu() {
     local topic="$1"
     local timeout="$2"
-    local elapsed=0
+    local start=$SECONDS
 
     log_info "Waiting for IMU data on $topic (timeout: ${timeout}s)..."
-    while [ $elapsed -lt $timeout ]; do
-        if timeout 2 ros2 topic echo "$topic" --once 2>/dev/null | grep -q "orientation"; then
-            log_ok "IMU data available on $topic (after ${elapsed}s)"
+    while [ $((SECONDS - start)) -lt $timeout ]; do
+        if timeout 10 ros2 topic echo "$topic" --once 2>/dev/null | grep -q "orientation"; then
+            log_ok "IMU data available on $topic (after $((SECONDS - start))s)"
             return 0
         fi
         sleep 1
-        elapsed=$((elapsed + 1))
     done
     log_warn "IMU not publishing on $topic after ${timeout}s"
     return 1
@@ -431,6 +451,41 @@ log_info "Sourcing workspace: $WS_SETUP"
 source "$WS_SETUP"
 log_ok "Workspace sourced."
 
+# ---------- 2b. Lidar data must survive a Wi-Fi drop (2026-11-11) ----------
+# Subscribers of /points and /rslidar_imu_data advertise 127.0.0.1 instead of the
+# Wi-Fi address, so the (Cyclone DDS) lidar driver keeps reaching them when the
+# hotspot drops. Only those two topics are affected. Off switch: TROV_LIDAR_LOOPBACK=0
+# 2026-11-12: DEFAULT IS NOW OFF. On the first live start with it ON, no node received
+# /points or /rslidar_imu_data from the real driver (FAST-LIO never started). Do not
+# turn it back on (TROV_LIDAR_LOOPBACK=1) until that is understood.
+TROV_LIDAR_LOOPBACK="${TROV_LIDAR_LOOPBACK:-0}"
+LIDAR_LOOPBACK_PROFILE="/home/nvidia/trov_fastrtps_lidar_loopback.xml"
+# ---------- 2c. DDS never uses Wi-Fi (2026-11-12, replaces 2b) ----------
+# Root cause of 2b failing: its per-topic locator had no port, so every process
+# advertised participant 0's port (7411 = wit_ros2_imu) and no lidar reader got data.
+# New fix, two halves:
+#   FastRTPS nodes: shared memory as before + UDP only on 127.0.0.1 / 192.168.2.202
+#                   (static lidar-port address), so the Wi-Fi IP is never advertised.
+#   Lidar driver  : Cyclone pinned to enP1p5s0 (CYCLONEDDS_URI, set only for that launch).
+# Result: the driver sends /points and /rslidar_imu_data to 192.168.2.202, which a
+# hotspot drop cannot remove. Other machines cannot reach these nodes over DDS via
+# Wi-Fi (nothing did on 2026-11-12; the UI uses rosbridge, unaffected).
+# Off switch: TROV_DDS_WIRED_ONLY=0  (back to the old default behaviour)
+TROV_DDS_WIRED_ONLY="${TROV_DDS_WIRED_ONLY:-1}"
+DDS_WIRED_ONLY_PROFILE="/home/nvidia/trov_fastrtps_wired_only.xml"
+LIDAR_CYCLONE_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="enP1p5s0"/></Interfaces></General></Domain></CycloneDDS>'
+if [ "$TROV_LIDAR_LOOPBACK" = "1" ] && [ -f "$LIDAR_LOOPBACK_PROFILE" ]; then
+    export FASTRTPS_DEFAULT_PROFILES_FILE="$LIDAR_LOOPBACK_PROFILE"
+    TROV_DDS_WIRED_ONLY=0
+    log_warn "Lidar loopback profile ON (2026-11-11, known broken): $LIDAR_LOOPBACK_PROFILE"
+elif [ "$TROV_DDS_WIRED_ONLY" = "1" ] && [ -f "$DDS_WIRED_ONLY_PROFILE" ]; then
+    export FASTRTPS_DEFAULT_PROFILES_FILE="$DDS_WIRED_ONLY_PROFILE"
+    log_ok "DDS wired-only ON: $DDS_WIRED_ONLY_PROFILE + lidar Cyclone on enP1p5s0 (Wi-Fi drop safe)"
+else
+    TROV_DDS_WIRED_ONLY=0
+    log_warn "DDS wired-only OFF — a Wi-Fi drop will interrupt /points"
+fi
+
 log_info "ROS_DISTRO    = $ROS_DISTRO"
 log_info "ROS_DOMAIN_ID = ${ROS_DOMAIN_ID:-0 (default)}"
 
@@ -473,8 +528,13 @@ echo ""
 cd "$WORKSPACE_DIR"
 
 # ---------- 6. RSLidar SDK ----------
-launch_node "rslidar_sdk" \
-    ros2 launch rslidar_sdk humble_start.py
+if [ "$TROV_DDS_WIRED_ONLY" = "1" ]; then
+    launch_node "rslidar_sdk" \
+        env CYCLONEDDS_URI="$LIDAR_CYCLONE_URI" ros2 launch rslidar_sdk humble_start.py
+else
+    launch_node "rslidar_sdk" \
+        ros2 launch rslidar_sdk humble_start.py
+fi
 
 # ---------- 7. WIT IMU ----------
 launch_node "wit_imu" \
@@ -514,8 +574,20 @@ cd "$WORKSPACE_DIR"
 echo ""
 echo -e "${CYAN}--- Starting drive bridge ---${NC}"
 echo ""
-launch_node "drive_bridge" \
-    ros2 run cpp_pubsub drive_outdoor
+# 2026-11-11: drive bridge selection.
+#   drive_outdoor_pivot (default): pivot-only, closed-loop pivot on fused gyro+FAST-LIO yaw
+#                                   rate, closed-loop speed, collision check, no ARC turning.
+#   drive_outdoor                 : previous bridge (ARC turns + pivot), kept for fallback.
+# Switch:  DRIVE_BRIDGE_EXEC=drive_outdoor  (env var, or edit the default below)
+DRIVE_BRIDGE_EXEC="${DRIVE_BRIDGE_EXEC:-drive_outdoor_pivot}"
+log_info "Drive bridge: $DRIVE_BRIDGE_EXEC"
+if [ "$DRIVE_BRIDGE_EXEC" = "drive_outdoor" ]; then
+    launch_node "drive_bridge" \
+        ros2 run cpp_pubsub drive_outdoor --ros-args -p max_pivot_rate:=0.3 -p pivot_breakaway_step:=20.0
+else
+    launch_node "drive_bridge" \
+        ros2 run cpp_pubsub drive_outdoor_pivot
+fi
 wait_for_node "drive_bridge" 10 "warn"
 
 # ============================================================
@@ -620,7 +692,7 @@ imu_ok=true
 
 wait_for_topic "/points"                45 || { log_warn "LiDAR /points not ready";           lidar_ok=false; }
 wait_for_tf    "base_link" "lidar_link" 30 || { log_warn "TF base_link→lidar_link not ready"; tf_ok=false;    }
-wait_for_imu   "/imu/data"             30 || { log_warn "IMU /imu/data not ready";            imu_ok=false;   }
+wait_for_imu   "$ODOM_IMU_TOPIC"       30 || { log_warn "IMU $ODOM_IMU_TOPIC not ready";      imu_ok=false;   }
 
 if [ "$lidar_ok" = false ] || [ "$tf_ok" = false ] || [ "$imu_ok" = false ]; then
     log_warn "One or more ICP prerequisites are not fully ready — ICP may be unreliable."
@@ -632,26 +704,25 @@ max_attempts=3
 icp_success=false
 
 for attempt in $(seq 1 $max_attempts); do
-    log_info "ICP Odometry launch attempt $attempt/$max_attempts"
+    log_info "Odometry launch attempt $attempt/$max_attempts — backend: $ODOM_BACKEND ($ODOM_LAUNCH_FILE)"
 
     launch_node "icp_odometry" \
-        ros2 launch trov "$ICP_LAUNCH_FILE"
+        ros2 launch trov "$ODOM_LAUNCH_FILE"
 
     log_info "Polling for /odom from ICP (timeout: 60s)..."
-    icp_elapsed=0
+    icp_start=$SECONDS
     icp_ready=false
-    while [ $icp_elapsed -lt 60 ]; do
+    while [ $((SECONDS - icp_start)) -lt 60 ]; do
         if ! kill -0 "${NODE_PIDS[icp_odometry]}" 2>/dev/null; then
             log_warn "ICP process died on attempt $attempt"
             break
         fi
-        if timeout 2 ros2 topic echo /odom --once 2>/dev/null | grep -q "pose"; then
-            log_ok "ICP Odometry publishing /odom (attempt $attempt, after ${icp_elapsed}s)"
+        if timeout 10 ros2 topic echo /odom --once 2>/dev/null | grep -q "pose"; then
+            log_ok "ICP Odometry publishing /odom (attempt $attempt, after $((SECONDS - icp_start))s)"
             icp_ready=true
             break
         fi
         sleep 1
-        icp_elapsed=$((icp_elapsed + 1))
     done
 
     if [ "$icp_ready" = true ]; then
@@ -662,6 +733,10 @@ for attempt in $(seq 1 $max_attempts); do
     log_warn "ICP Odometry failed on attempt $attempt"
     if [ $attempt -lt $max_attempts ]; then
         pkill -9 -f "icp_odometry" 2>/dev/null || true
+        pkill -9 -f "fastlio_mapping" 2>/dev/null || true
+        pkill -9 -f "lio_odom_bridge" 2>/dev/null || true
+        pkill -9 -f "lidar_to_imu_static_tf" 2>/dev/null || true
+        pkill -9 -f "pointcloud_to_laserscan" 2>/dev/null || true
         sleep 2
     fi
 done
@@ -738,6 +813,31 @@ if ! wait_for_ros_node "lifecycle_manager_navigation" 60; then
     log_error "lifecycle_manager_navigation never appeared — navigation launch likely failed"
 else
     log_ok "Navigation stack is registered and running."
+fi
+
+# ============================================================
+# ---------- 18b. RC Delivery Trigger (2026-11-12) ----------
+# RC switch on channel 5 of /mavros/rc/in:
+#   neutral -> HIGH (>1900) : /delivery/go  with the route set by route_name in
+#                             src/trov/scripts/rc_delivery_trigger.py (edit it there)
+#   neutral -> LOW  (<1100) : /delivery/unloaded
+# The switch position at startup is never a command (must rest in neutral first).
+# Started after Nav2 so a flick during boot cannot start a mission that has no planner.
+# Off switch: RC_DELIVERY_TRIGGER=0
+# Optional one-off override without editing the .py: RC_DELIVERY_ROUTE=<name>
+RC_DELIVERY_TRIGGER="${RC_DELIVERY_TRIGGER:-1}"
+RC_DELIVERY_ROUTE="${RC_DELIVERY_ROUTE:-}"
+RC_ROUTE_ARGS=()
+[ -n "$RC_DELIVERY_ROUTE" ] && RC_ROUTE_ARGS=(--ros-args -p route_name:="$RC_DELIVERY_ROUTE")
+if [ "$RC_DELIVERY_TRIGGER" = "1" ]; then
+    echo ""
+    echo -e "${CYAN}--- Starting RC Delivery Trigger (ch5, route: ${RC_DELIVERY_ROUTE:-from rc_delivery_trigger.py}) ---${NC}"
+    echo ""
+    launch_node "rc_delivery_trigger" \
+        ros2 run trov rc_delivery_trigger.py "${RC_ROUTE_ARGS[@]}"
+    wait_for_node "rc_delivery_trigger" 10 "warn"
+else
+    log_warn "RC delivery trigger OFF (RC_DELIVERY_TRIGGER=$RC_DELIVERY_TRIGGER)"
 fi
 
 # ============================================================

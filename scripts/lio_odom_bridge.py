@@ -41,7 +41,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import TransformStamped, TwistWithCovarianceStamped
 
 import tf2_ros
 
@@ -127,6 +127,16 @@ def yaw_to_quat(yaw):
     return np.array([0.0, 0.0, math.sin(yaw * 0.5), math.cos(yaw * 0.5)])
 
 
+def rot_log(r):
+    """3x3 rotation matrix -> rotation vector (axis * angle, rad)."""
+    c = max(-1.0, min(1.0, (np.trace(r) - 1.0) * 0.5))
+    ang = math.acos(c)
+    if ang < 1e-9:
+        return np.zeros(3)
+    v = np.array([r[2, 1] - r[1, 2], r[0, 2] - r[2, 0], r[1, 0] - r[0, 1]])
+    return v * (ang / (2.0 * math.sin(ang)))
+
+
 def flatten_2d(t):
     """Zero out z, roll and pitch, keeping x, y and yaw."""
     out = np.eye(4)
@@ -156,6 +166,11 @@ class LioOdomBridge(Node):
         self.declare_parameter('two_d_mode', True)
         # Re-origin so odom starts at the robot's initial pose.
         self.declare_parameter('zero_origin', True)
+        # 2026-11-11: also publish base_link velocity (body frame) for
+        # lidar_localization's use_twist_prediction (its 'twist' input).
+        # Empty string disables it.
+        self.declare_parameter('twist_topic', '/twist')
+        self.declare_parameter('twist_ema_alpha', 0.5)
 
         gp = self.get_parameter
         self.input_topic = gp('input_topic').value
@@ -166,12 +181,19 @@ class LioOdomBridge(Node):
         self.publish_tf = gp('publish_tf').value
         self.two_d_mode = gp('two_d_mode').value
         self.zero_origin = gp('zero_origin').value
+        self.twist_topic = gp('twist_topic').value
+        self.twist_alpha = float(gp('twist_ema_alpha').value)
 
         # --- state ---------------------------------------------------------
         # T_body_base: pose of base_link expressed in the LIO body frame.
         self.t_body_base = None
         # T_correct: maps FAST-LIO's camera_init into our odom frame.
         self.t_correct = None
+        # Previous base_link pose (camera_init frame) + stamp, for velocity.
+        self.prev_base = None
+        self.prev_stamp = None
+        self.v_body = np.zeros(3)
+        self.w_body = np.zeros(3)
 
         # --- tf --------------------------------------------------------------
         self.tf_buffer = tf2_ros.Buffer()
@@ -186,6 +208,9 @@ class LioOdomBridge(Node):
         self.pub = self.create_publisher(Odometry, self.output_topic, qos)
         self.sub = self.create_subscription(
             Odometry, self.input_topic, self.on_odom, qos)
+        self.twist_pub = (self.create_publisher(
+            TwistWithCovarianceStamped, self.twist_topic, qos)
+            if self.twist_topic else None)
 
         self.get_logger().info(
             f'lio_odom_bridge: {self.input_topic} -> {self.output_topic} '
@@ -233,6 +258,9 @@ class LioOdomBridge(Node):
         # Compose in the extrinsic to get base_link's pose.
         t_init_base = t_init_body @ self.t_body_base
 
+        if self.twist_pub is not None:
+            self.publish_twist(msg.header.stamp, t_init_base)
+
         # Re-origin: define odom so the first sample lands at identity.
         if self.zero_origin and self.t_correct is None:
             self.t_correct = invert_tf(t_init_base)
@@ -276,6 +304,35 @@ class LioOdomBridge(Node):
             tfs.transform.rotation.z = float(quat[2])
             tfs.transform.rotation.w = float(quat[3])
             self.tf_broadcaster.sendTransform(tfs)
+
+
+    def publish_twist(self, stamp, t_init_base):
+        """base_link linear/angular velocity in the base_link frame, from
+        consecutive FAST-LIO poses (3D, before any 2D flattening)."""
+        t = stamp.sec + stamp.nanosec * 1e-9
+        if self.prev_base is not None:
+            dt = t - self.prev_stamp
+            if 1e-3 < dt < 0.5:
+                r_prev = self.prev_base[:3, :3]
+                v = r_prev.T @ (t_init_base[:3, 3] - self.prev_base[:3, 3]) / dt
+                w = rot_log(r_prev.T @ t_init_base[:3, :3]) / dt
+                a = self.twist_alpha
+                self.v_body = a * v + (1.0 - a) * self.v_body
+                self.w_body = a * w + (1.0 - a) * self.w_body
+                out = TwistWithCovarianceStamped()
+                out.header.stamp = stamp
+                out.header.frame_id = self.base_frame
+                (out.twist.twist.linear.x, out.twist.twist.linear.y,
+                 out.twist.twist.linear.z) = (float(x) for x in self.v_body)
+                (out.twist.twist.angular.x, out.twist.twist.angular.y,
+                 out.twist.twist.angular.z) = (float(x) for x in self.w_body)
+                self.twist_pub.publish(out)
+            elif dt >= 0.5:
+                # gap in FAST-LIO output: restart the filter, publish nothing
+                self.v_body[:] = 0.0
+                self.w_body[:] = 0.0
+        self.prev_base = t_init_base.copy()
+        self.prev_stamp = t
 
 
 def main(args=None):

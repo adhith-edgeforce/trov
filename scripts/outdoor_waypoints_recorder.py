@@ -160,7 +160,7 @@ class OutdoorWaypointRecorder(Node):
 
         # ── Parameters ────────────────────────────────────────────────────────
         self.declare_parameter('route_name', 'default')
-        self.declare_parameter('distance_threshold', 1.5)
+        self.declare_parameter('distance_threshold', 1.0)
         self.declare_parameter('min_waypoints', 2)
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('robot_frame', 'base_link')
@@ -243,6 +243,13 @@ class OutdoorWaypointRecorder(Node):
         # Retries _detect_active_map() every map_retry_interval seconds until
         # it succeeds, then cancels itself. This means the node self-heals if
         # lidar_localization wasn't ready when this node started.
+        # 2026-11-11: detection is non-blocking (call_async + done callback).
+        # The old code ran a nested rclpy.spin_until_future_complete() inside
+        # this timer callback while rclpy.spin() already owned the node, so
+        # once the first attempt missed, every retry timed out forever.
+        self._map_client = None
+        self._map_req_pending = False
+        self._map_req_time = 0.0
         self._map_retry_timer = self.create_timer(
             self._map_retry_interval, self._map_retry_cb
         )
@@ -271,50 +278,53 @@ class OutdoorWaypointRecorder(Node):
 
     def _detect_active_map(self):
         """
-        Query lidar_localization for its map_path parameter.
-        Retries until map_detect_timeout seconds have elapsed.
-        On success: sets self.active_map and cancels the retry timer.
-        On failure: leaves self.active_map as None — retry timer will keep trying.
+        Ask lidar_localization for its map_path parameter (non-blocking).
+
+        Sends one GetParameters request and returns immediately; the reply is
+        handled in _on_map_param_response(). Called once at startup and then
+        by the retry timer until the map is known. A request that gets no
+        reply within map_detect_timeout seconds is dropped and re-sent.
 
         The map name is derived from the PCD filename stem:
-          '/path/to/adibatla_outdoor.pcd' → 'adibatla_outdoor'
+          '/path/to/adibatla_outdoor.pcd' -> 'adibatla_outdoor'
         """
+        if self.active_map is not None:
+            return
+
+        if self._map_req_pending:
+            if time.time() - self._map_req_time < self._map_detect_timeout:
+                return  # still waiting for the reply
+            self.get_logger().error(
+                f'[MapDetect] ✗ No reply from /{self._map_server_node} after '
+                f'{self._map_detect_timeout}s — sending a new request.'
+            )
+            self._map_req_pending = False
+
         srv_name = f'/{self._map_server_node}/get_parameters'
-        client   = self.create_client(GetParameters, srv_name)
+        if self._map_client is None:
+            self._map_client = self.create_client(GetParameters, srv_name)
+
+        if not self._map_client.service_is_ready():
+            self.get_logger().warn(
+                f'[MapDetect] {srv_name} not available yet — '
+                f'retrying every {self._map_retry_interval}s.'
+            )
+            return
 
         self.get_logger().info(
-            f'[MapDetect] Contacting {srv_name} '
-            f'(param: "{self._map_param_name}", '
-            f'timeout: {self._map_detect_timeout}s)...'
+            f'[MapDetect] Requesting "{self._map_param_name}" from {srv_name}...'
         )
-
-        deadline = time.time() + self._map_detect_timeout
-
-        while not client.wait_for_service(timeout_sec=1.0):
-            if time.time() > deadline:
-                self.get_logger().error(
-                    f'[MapDetect] ✗ /{self._map_server_node} not available after '
-                    f'{self._map_detect_timeout}s. '
-                    f'Will retry every {self._map_retry_interval}s automatically.'
-                )
-                return
-            self.get_logger().warn(
-                f'[MapDetect] /{self._map_server_node} not ready — retrying...',
-                throttle_duration_sec=2.0
-            )
-
         request       = GetParameters.Request()
         request.names = [self._map_param_name]
-        future        = client.call_async(request)
+        self._map_req_pending = True
+        self._map_req_time    = time.time()
+        future = self._map_client.call_async(request)
+        future.add_done_callback(self._on_map_param_response)
 
-        remaining = max(deadline - time.time(), 2.0)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=remaining)
-
-        if not future.done():
-            self.get_logger().error(
-                '[MapDetect] ✗ Parameter request timed out. '
-                f'Will retry every {self._map_retry_interval}s automatically.'
-            )
+    def _on_map_param_response(self, future):
+        """Handle the GetParameters reply (runs in the node's executor)."""
+        self._map_req_pending = False
+        if self.active_map is not None:
             return
 
         try:
@@ -326,7 +336,7 @@ class OutdoorWaypointRecorder(Node):
             )
             return
 
-        if not response.values:
+        if response is None or not response.values:
             self.get_logger().error(
                 f'[MapDetect] ✗ /{self._map_server_node} returned no value for '
                 f'"{self._map_param_name}". '
@@ -348,6 +358,9 @@ class OutdoorWaypointRecorder(Node):
             f'[MapDetect] ✓ Active map: "{self.active_map}" '
             f'(from {self._map_param_name}: {map_path})'
         )
+        self._map_retry_timer.cancel()
+        self._publish_available_routes()
+        self._publish_status()
 
     # =========================================================================
     # Map detection retry timer callback
@@ -355,28 +368,13 @@ class OutdoorWaypointRecorder(Node):
 
     def _map_retry_cb(self):
         """
-        Fires every map_retry_interval seconds.
-        If active_map is already set, cancels itself — job done.
-        If active_map is still None, retries _detect_active_map().
-        On success, publishes routes and status, then cancels itself.
+        Fires every map_retry_interval seconds until the map is known.
+        Sends a (non-blocking) map_path request if none is in flight.
         """
         if self.active_map is not None:
             self._map_retry_timer.cancel()
             return
-
-        self.get_logger().info(
-            '[MapRetry] active_map not set — retrying map detection...'
-        )
         self._detect_active_map()
-
-        if self.active_map is not None:
-            self.get_logger().info(
-                f'[MapRetry] Map detection recovered: "{self.active_map}". '
-                f'Stopping retry timer.'
-            )
-            self._publish_available_routes()
-            self._publish_status()
-            self._map_retry_timer.cancel()
 
     # =========================================================================
     # Subscriber callbacks — drive mode

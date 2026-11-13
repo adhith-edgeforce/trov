@@ -1,0 +1,86 @@
+### lidarslam_outdoor_tuned.yaml
+### lidarslam (scanmatcher + graph_based_slam) config for TROV OUTDOOR PCD mapping
+### with the forward-tilted RoboSense RS-Airy.
+###
+### Loaded by launch/outdoor/lidarslam_mapping_outdoor.launch.py.
+### The stock file (src/lidarslam_ros2/lidarslam/param/lidarslam_outdoor.yaml)
+### is untouched; every difference from it is marked CHANGED with the reason.
+###
+### Tuned 2026-11-10 by replaying /data/bags/outdoor_map_20261110_135424
+### (91 m out-and-back drive). Position error is measured against the FAST-LIO
+### odometry recorded live during that drive:
+###     stock settings : 49 cm RMS, 3.0 m max, doubled / ghost walls
+###     this file      : 7.8 cm RMS, 27 cm max   (two FAST-LIO runs on the same
+###                      data agree to 6.3 cm RMS, so this is at the floor)
+
+scan_matcher:
+  ros__parameters:
+    global_frame_id: "map"
+    robot_frame_id: "base_link"
+    registration_method: "NDT"
+
+    # CHANGED 3.0 -> 2.0. Lowest position error of 3.0 / 2.0 / 1.5 tested.
+    ndt_resolution: 2.0
+    ndt_num_threads: 8
+    gicp_corr_dist_threshold: 5.0
+    trans_for_mapupdate: 1.0
+
+    # CHANGED 0.1 -> 0.2. The Airy cloud is ~73k points; at 0.1 m scan matching
+    # could not keep up with 10 Hz and dropped scans. 0.2 m is faster and was
+    # also more accurate.
+    vg_size_for_input: 0.2
+    vg_size_for_map: 0.05
+    use_min_max_filter: true
+    scan_min_range: 1.0
+    scan_max_range: 30.0
+
+    # CHANGED 0.125 -> 0.1 (the lidar runs at 10 Hz). Only used when use_imu
+    # is true, kept correct in case it is ever re-enabled.
+    scan_period: 0.1
+    map_publish_period: 15.0
+    num_targeted_cloud: 40
+    set_initial_pose: true
+    initial_pose_x: 0.0
+    initial_pose_y: 0.0
+    initial_pose_z: 0.0
+    initial_pose_qx: 0.0
+    initial_pose_qy: 0.0
+    initial_pose_qz: 0.0
+    initial_pose_qw: 1.0
+
+    # CHANGED true -> false. THIS IS THE IMPORTANT ONE.
+    # lidarslam's de-skew (lidar_undistortion.hpp) ignores the per-point
+    # timestamps and guesses each point's time from its horizontal angle
+    # around base_link's vertical axis, i.e. it assumes an upright spinning
+    # lidar. The Airy is tilted forward, so the guess is wrong and the
+    # "correction" distorts every scan taken while moving. Do not re-enable.
+    use_imu: false
+    use_odom: false
+    debug_flag: false
+    use_sim_time: false
+
+    # CHANGED true -> false. FAST-LIO (lio_odom_bridge) already publishes
+    # odom -> base_link. With this true, scanmatcher also publishes
+    # map -> base_link and base_link ends up with two TF parents.
+    # Side effect: RViz (fixed frame "map") shows the map and the path but
+    # not the live scan. Set true only if odometry is stopped while mapping.
+    publish_tf: false
+
+graph_based_slam:
+  ros__parameters:
+    # All values identical to the stock file. On the tuning drive the loop
+    # closure search ran 62 times and accepted none, so the saved map was
+    # byte-for-byte the same size with loop closure on and off.
+    registration_method: "NDT"
+    ndt_resolution: 3.0
+    ndt_num_threads: 8
+    voxel_leaf_size: 0.1
+    loop_detection_period: 300
+    threshold_loop_closure_score: 0.7
+    distance_loop_closure: 50.0
+    range_of_searching_loop_closure: 20.0
+    search_submap_num: 10
+    num_adjacent_pose_cnstraints: 10
+    use_save_map_in_loop: true
+    debug_flag: true
+    use_sim_time: false

@@ -21,22 +21,28 @@
     use_pcd_map: true
     #map_path: "/data/trov_ws/map_straight.pcd"
     #map_path: "/data/trov_ws/outdoor_from_shutter_to_gate.pcd"
-    map_path: "/data/trov_ws/pcd_maps/map_outdoor.pcd"
+    map_path: "/data/trov_ws/src/trov/maps/outdoor/506_ver2.pcd"
     #map_path: "/data/trov_ws/map_left_right.pcd"
     #map_path: "/data/trov_ws/mrsam_outdoor.pcd"
     #map_path: "/home/nvidia/map.pcd"
-    set_initial_pose: false
-    initial_pose_x: 1.090 #0.0
-    initial_pose_y: -0.379 #0.0
-    initial_pose_z: 0.0
+    # Start pose on map 506_ver2 (measured 2026-11-11 14:38 by localization at the user's new start
+    # spot, ~2.8 m ahead of the 13:00 spot; fitness 0.013, spread 2.5 cm / 0.25 deg, yaw 0.15 deg).
+    # Only valid for 506_ver2. Starting elsewhere: use RViz "2D Pose Estimate" (/initialpose).
+    # Previous 506_ver2 start (13:00): x -0.103, y 0.023, z 0.072, qz 0.004858, qw 0.999988
+    # 506_ver1 start: x -0.601, y 0.359, z 0.169, qz 0.013404, qw 0.999910
+    # (backups: /home/nvidia/trov_backups/localization_506_ver2_initpose_2026-11-11/)
+    set_initial_pose: true
+    initial_pose_x: 2.735
+    initial_pose_y: -0.107
+    initial_pose_z: 0.008
     initial_pose_qx: 0.0
     initial_pose_qy: 0.0
-    initial_pose_qz: 0.0
-    initial_pose_qw: 1.0
+    initial_pose_qz: 0.001303
+    initial_pose_qw: 0.999999
     use_odom: false
-    use_twist_prediction: false
-    twist_prediction_use_angular_velocity: false
-    max_twist_prediction_dt: 0.5
+    use_twist_prediction: true  # 2026-11-11: seed NDT with FAST-LIO velocity from lio_odom_bridge (/twist). Was false.
+    twist_prediction_use_angular_velocity: true  # was false
+    max_twist_prediction_dt: 1.0  # was 0.5; NDT runs ~2 Hz on the robot
     use_imu: false
     use_imu_preintegration: false
     use_twist_ekf: false

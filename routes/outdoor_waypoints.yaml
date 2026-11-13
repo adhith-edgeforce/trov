@@ -3205,3 +3205,2049 @@ maps:
             z: -0.020906
             w: 0.999773
           yaw_deg: -2.4
+  506_ver2:
+    routes:
+      FGG:
+        metadata:
+          total: 36
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -0.1052
+            y: 0.2508
+            z: 0.0521
+          orientation:
+            x: 0.000519
+            y: 0.002918
+            z: -0.029792
+            w: 0.999552
+          yaw_deg: -3.41
+        - index: 1
+          position:
+            x: 1.6603
+            y: 0.0728
+            z: 0.018
+          orientation:
+            x: -0.001723
+            y: 0.005633
+            z: -0.033467
+            w: 0.999422
+          yaw_deg: -3.84
+        - index: 2
+          position:
+            x: 3.2391
+            y: -0.1564
+            z: 0.0068
+          orientation:
+            x: 0.000577
+            y: 0.0031
+            z: -0.034863
+            w: 0.999387
+          yaw_deg: -4.0
+        - index: 3
+          position:
+            x: 4.9766
+            y: -0.3684
+            z: -0.0278
+          orientation:
+            x: 0.002613
+            y: 0.007118
+            z: -0.031511
+            w: 0.999475
+          yaw_deg: -3.61
+        - index: 4
+          position:
+            x: 6.4776
+            y: -0.5306
+            z: -0.0797
+          orientation:
+            x: 0.001062
+            y: 0.00916
+            z: -0.022191
+            w: 0.999711
+          yaw_deg: -2.54
+        - index: 5
+          position:
+            x: 8.1626
+            y: -0.7493
+            z: -0.1255
+          orientation:
+            x: -0.001205
+            y: 0.009306
+            z: -0.028984
+            w: 0.999536
+          yaw_deg: -3.32
+        - index: 6
+          position:
+            x: 10.1103
+            y: -0.8609
+            z: -0.1633
+          orientation:
+            x: -0.001857
+            y: 0.007069
+            z: -0.018205
+            w: 0.999808
+          yaw_deg: -2.09
+        - index: 7
+          position:
+            x: 11.8093
+            y: -0.9357
+            z: -0.1837
+          orientation:
+            x: -0.001996
+            y: 0.010254
+            z: -0.015468
+            w: 0.999826
+          yaw_deg: -1.78
+        - index: 8
+          position:
+            x: 13.3775
+            y: -0.9468
+            z: -0.2177
+          orientation:
+            x: -0.003715
+            y: 0.011852
+            z: 0.033335
+            w: 0.999367
+          yaw_deg: 3.82
+        - index: 9
+          position:
+            x: 14.8918
+            y: -1.0605
+            z: -0.2657
+          orientation:
+            x: -0.004982
+            y: 0.01949
+            z: 0.003684
+            w: 0.999791
+          yaw_deg: 0.41
+        - index: 10
+          position:
+            x: 16.5396
+            y: -1.1389
+            z: -0.3523
+          orientation:
+            x: -0.002086
+            y: 0.039874
+            z: -0.004838
+            w: 0.999191
+          yaw_deg: -0.57
+        - index: 11
+          position:
+            x: 18.1651
+            y: -1.1927
+            z: -0.4731
+          orientation:
+            x: -0.000137
+            y: 0.028083
+            z: 0.003403
+            w: 0.9996
+          yaw_deg: 0.39
+        - index: 12
+          position:
+            x: 19.903
+            y: -1.2807
+            z: -0.5439
+          orientation:
+            x: -0.004828
+            y: 0.011899
+            z: 0.009157
+            w: 0.999876
+          yaw_deg: 1.04
+        - index: 13
+          position:
+            x: 22.0288
+            y: 1.6215
+            z: -0.6473
+          orientation:
+            x: -0.005521
+            y: 0.013289
+            z: 0.124742
+            w: 0.992085
+          yaw_deg: 14.33
+        - index: 14
+          position:
+            x: 23.4584
+            y: 5.1074
+            z: -0.7215
+          orientation:
+            x: -0.016623
+            y: 0.017346
+            z: -0.014704
+            w: 0.999603
+          yaw_deg: -1.72
+        - index: 15
+          position:
+            x: 24.7278
+            y: 6.0563
+            z: -0.7934
+          orientation:
+            x: -0.022871
+            y: 0.018038
+            z: -0.191964
+            w: 0.98097
+          yaw_deg: -22.18
+        - index: 16
+          position:
+            x: 24.5343
+            y: 4.5575
+            z: -0.7924
+          orientation:
+            x: -0.017343
+            y: 0.015279
+            z: -0.109461
+            w: 0.993722
+          yaw_deg: -12.6
+        - index: 17
+          position:
+            x: 21.2041
+            y: 5.911
+            z: -0.5354
+          orientation:
+            x: -0.01502
+            y: 0.02268
+            z: -0.168178
+            w: 0.985381
+          yaw_deg: -19.41
+        - index: 18
+          position:
+            x: 20.4055
+            y: 8.305
+            z: -0.4664
+          orientation:
+            x: -0.015108
+            y: 0.024456
+            z: -0.298449
+            w: 0.953992
+          yaw_deg: -34.79
+        - index: 19
+          position:
+            x: 20.9977
+            y: 4.9903
+            z: -0.5381
+          orientation:
+            x: -0.010677
+            y: 0.019254
+            z: -0.243828
+            w: 0.969569
+          yaw_deg: -28.26
+        - index: 20
+          position:
+            x: 22.1611
+            y: 2.2057
+            z: -0.6558
+          orientation:
+            x: -0.014748
+            y: 0.018173
+            z: -0.235362
+            w: 0.971626
+          yaw_deg: -27.26
+        - index: 21
+          position:
+            x: 22.6551
+            y: -2.9357
+            z: -0.6338
+          orientation:
+            x: -0.014758
+            y: 0.023232
+            z: -0.115551
+            w: 0.99292
+          yaw_deg: -13.32
+        - index: 22
+          position:
+            x: 22.0992
+            y: -6.6012
+            z: -0.5196
+          orientation:
+            x: -0.000421
+            y: 0.032218
+            z: -0.054718
+            w: 0.997982
+          yaw_deg: -6.28
+        - index: 23
+          position:
+            x: 22.1679
+            y: -5.0907
+            z: -0.5795
+          orientation:
+            x: -0.003466
+            y: 0.028876
+            z: -0.045023
+            w: 0.998563
+          yaw_deg: -5.18
+        - index: 24
+          position:
+            x: 23.0456
+            y: -2.5406
+            z: -0.6192
+          orientation:
+            x: -0.010777
+            y: 0.030673
+            z: -0.019678
+            w: 0.999278
+          yaw_deg: -2.3
+        - index: 25
+          position:
+            x: 23.6744
+            y: 2.1652
+            z: -0.7144
+          orientation:
+            x: -0.003591
+            y: 0.028813
+            z: -0.017681
+            w: 0.999422
+          yaw_deg: -2.04
+        - index: 26
+          position:
+            x: 24.4786
+            y: 4.4301
+            z: -0.7495
+          orientation:
+            x: -0.00308
+            y: 0.011785
+            z: -0.020816
+            w: 0.999709
+          yaw_deg: -2.39
+        - index: 27
+          position:
+            x: 26.0295
+            y: 4.2818
+            z: -0.7937
+          orientation:
+            x: -0.002453
+            y: 0.01716
+            z: -0.024868
+            w: 0.99954
+          yaw_deg: -2.86
+        - index: 28
+          position:
+            x: 27.9604
+            y: 4.111
+            z: -0.9917
+          orientation:
+            x: -0.007424
+            y: 0.009494
+            z: -0.032014
+            w: 0.999415
+          yaw_deg: -3.68
+        - index: 29
+          position:
+            x: 29.5339
+            y: 3.989
+            z: -1.0548
+          orientation:
+            x: -0.003996
+            y: 0.015731
+            z: -0.017365
+            w: 0.999717
+          yaw_deg: -2.0
+        - index: 30
+          position:
+            x: 31.1587
+            y: 3.8524
+            z: -1.1275
+          orientation:
+            x: -0.004538
+            y: 0.006822
+            z: -0.022435
+            w: 0.999715
+          yaw_deg: -2.57
+        - index: 31
+          position:
+            x: 32.8586
+            y: 3.6834
+            z: -1.17
+          orientation:
+            x: -0.012217
+            y: 0.006476
+            z: -0.031164
+            w: 0.999419
+          yaw_deg: -3.58
+        - index: 32
+          position:
+            x: 34.5556
+            y: 3.5434
+            z: -1.2093
+          orientation:
+            x: -0.006828
+            y: 0.013601
+            z: -0.001212
+            w: 0.999883
+          yaw_deg: -0.15
+        - index: 33
+          position:
+            x: 36.3971
+            y: 3.5547
+            z: -1.32
+          orientation:
+            x: -0.007436
+            y: 0.006492
+            z: 0.044928
+            w: 0.998941
+          yaw_deg: 5.14
+        - index: 34
+          position:
+            x: 38.0199
+            y: 3.6174
+            z: -1.3925
+          orientation:
+            x: -0.007679
+            y: 0.015758
+            z: 0.041516
+            w: 0.998984
+          yaw_deg: 4.75
+        - index: 35
+          position:
+            x: 39.5222
+            y: 3.7265
+            z: -1.4513
+          orientation:
+            x: -0.007813
+            y: 0.01873
+            z: 0.03514
+            w: 0.999176
+          yaw_deg: 4.01
+      FGG_2:
+        metadata:
+          total: 24
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: -0.0862
+            y: -0.0322
+            z: 0.066
+          orientation:
+            x: -0.001548
+            y: 0.003281
+            z: 0.010415
+            w: 0.999939
+          yaw_deg: 1.19
+        - index: 1
+          position:
+            x: 1.7837
+            y: -0.063
+            z: 0.0211
+          orientation:
+            x: -0.003358
+            y: 0.005745
+            z: 0.002528
+            w: 0.999975
+          yaw_deg: 0.29
+        - index: 2
+          position:
+            x: 3.2815
+            y: -0.1799
+            z: -0.0059
+          orientation:
+            x: 0.001433
+            y: 0.001515
+            z: 0.004984
+            w: 0.999985
+          yaw_deg: 0.57
+        - index: 3
+          position:
+            x: 5.0418
+            y: -0.2517
+            z: -0.0279
+          orientation:
+            x: 0.001143
+            y: 0.007126
+            z: 0.00479
+            w: 0.999962
+          yaw_deg: 0.55
+        - index: 4
+          position:
+            x: 6.865
+            y: -0.3718
+            z: -0.084
+          orientation:
+            x: -0.001493
+            y: 0.007266
+            z: 0.003763
+            w: 0.999965
+          yaw_deg: 0.43
+        - index: 5
+          position:
+            x: 8.4215
+            y: -0.437
+            z: -0.1338
+          orientation:
+            x: -0.003057
+            y: 0.008031
+            z: 0.001721
+            w: 0.999962
+          yaw_deg: 0.19
+        - index: 6
+          position:
+            x: 10.029
+            y: -0.4615
+            z: -0.1589
+          orientation:
+            x: -0.004522
+            y: 0.008228
+            z: -0.001572
+            w: 0.999955
+          yaw_deg: -0.18
+        - index: 7
+          position:
+            x: 11.604
+            y: -0.4237
+            z: -0.1683
+          orientation:
+            x: -0.002675
+            y: 0.010054
+            z: -0.010811
+            w: 0.999887
+          yaw_deg: -1.24
+        - index: 8
+          position:
+            x: 13.1386
+            y: -0.5879
+            z: -0.2053
+          orientation:
+            x: -0.004375
+            y: 0.015564
+            z: -0.008925
+            w: 0.999829
+          yaw_deg: -1.03
+        - index: 9
+          position:
+            x: 14.7258
+            y: -0.7657
+            z: -0.2527
+          orientation:
+            x: -0.005304
+            y: 0.014208
+            z: -0.006508
+            w: 0.999864
+          yaw_deg: -0.75
+        - index: 10
+          position:
+            x: 16.3652
+            y: -0.8043
+            z: -0.3191
+          orientation:
+            x: -0.004583
+            y: 0.027392
+            z: -0.012601
+            w: 0.999535
+          yaw_deg: -1.46
+        - index: 11
+          position:
+            x: 18.2892
+            y: -0.9839
+            z: -0.4753
+          orientation:
+            x: -0.001844
+            y: 0.026738
+            z: -0.013635
+            w: 0.999548
+          yaw_deg: -1.57
+        - index: 12
+          position:
+            x: 19.9368
+            y: -0.1977
+            z: -0.5776
+          orientation:
+            x: 0.005062
+            y: 0.001469
+            z: 0.331042
+            w: 0.943601
+          yaw_deg: 38.66
+        - index: 13
+          position:
+            x: 21.6793
+            y: 0.9584
+            z: -0.6452
+          orientation:
+            x: 0.014639
+            y: 0.017559
+            z: 0.328434
+            w: 0.94425
+          yaw_deg: 38.38
+        - index: 14
+          position:
+            x: 22.9931
+            y: 1.9045
+            z: -0.704
+          orientation:
+            x: 0.010242
+            y: 0.021633
+            z: 0.324443
+            w: 0.945602
+          yaw_deg: 37.91
+        - index: 15
+          position:
+            x: 24.275
+            y: 2.7931
+            z: -0.7545
+          orientation:
+            x: 0.010136
+            y: 0.018194
+            z: 0.323102
+            w: 0.946135
+          yaw_deg: 37.73
+        - index: 16
+          position:
+            x: 25.7136
+            y: 3.5772
+            z: -0.7827
+          orientation:
+            x: -0.001314
+            y: 0.012968
+            z: 0.02575
+            w: 0.999583
+          yaw_deg: 2.95
+        - index: 17
+          position:
+            x: 27.4685
+            y: 3.6076
+            z: -0.9603
+          orientation:
+            x: -0.003672
+            y: 0.035542
+            z: 0.015559
+            w: 0.99924
+          yaw_deg: 1.77
+        - index: 18
+          position:
+            x: 29.2111
+            y: 3.5941
+            z: -1.036
+          orientation:
+            x: -0.002404
+            y: 0.013822
+            z: 0.012872
+            w: 0.999819
+          yaw_deg: 1.47
+        - index: 19
+          position:
+            x: 30.9962
+            y: 3.6959
+            z: -1.1038
+          orientation:
+            x: -0.000571
+            y: 0.004935
+            z: 0.062396
+            w: 0.998039
+          yaw_deg: 7.15
+        - index: 20
+          position:
+            x: 32.8727
+            y: 3.8137
+            z: -1.1699
+          orientation:
+            x: -0.007321
+            y: 0.00683
+            z: 0.053442
+            w: 0.998521
+          yaw_deg: 6.12
+        - index: 21
+          position:
+            x: 34.657
+            y: 3.9178
+            z: -1.2143
+          orientation:
+            x: -0.003979
+            y: 0.012124
+            z: -0.00294
+            w: 0.999914
+          yaw_deg: -0.34
+        - index: 22
+          position:
+            x: 36.2377
+            y: 3.866
+            z: -1.3088
+          orientation:
+            x: -0.007495
+            y: 0.009219
+            z: 0.019342
+            w: 0.999742
+          yaw_deg: 2.21
+        - index: 23
+          position:
+            x: 37.8639
+            y: 3.8518
+            z: -1.3786
+          orientation:
+            x: -0.009985
+            y: 0.015242
+            z: 0.019
+            w: 0.999653
+          yaw_deg: 2.16
+      FGG_3:
+        metadata:
+          total: 23
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 2.7538
+            y: -0.1221
+            z: 0.0036
+          orientation:
+            x: -0.001283
+            y: 0.003642
+            z: 0.002958
+            w: 0.999988
+          yaw_deg: 0.34
+        - index: 1
+          position:
+            x: 4.4747
+            y: -0.2426
+            z: -0.0268
+          orientation:
+            x: -0.002721
+            y: 0.012735
+            z: 0.004119
+            w: 0.999907
+          yaw_deg: 0.47
+        - index: 2
+          position:
+            x: 6.3207
+            y: -0.3354
+            z: -0.0769
+          orientation:
+            x: 0.000313
+            y: 0.00932
+            z: -0.001056
+            w: 0.999956
+          yaw_deg: -0.12
+        - index: 3
+          position:
+            x: 8.1287
+            y: -0.4451
+            z: -0.1225
+          orientation:
+            x: -0.001345
+            y: 0.007825
+            z: -0.002073
+            w: 0.999966
+          yaw_deg: -0.24
+        - index: 4
+          position:
+            x: 9.8606
+            y: -0.5222
+            z: -0.1533
+          orientation:
+            x: -0.003801
+            y: 0.004988
+            z: -0.020624
+            w: 0.999768
+          yaw_deg: -2.37
+        - index: 5
+          position:
+            x: 11.6256
+            y: -0.5588
+            z: -0.1708
+          orientation:
+            x: -0.004389
+            y: 0.009765
+            z: -0.015696
+            w: 0.999819
+          yaw_deg: -1.8
+        - index: 6
+          position:
+            x: 13.4631
+            y: -0.822
+            z: -0.2268
+          orientation:
+            x: -0.007429
+            y: 0.012405
+            z: -0.065381
+            w: 0.997756
+          yaw_deg: -7.51
+        - index: 7
+          position:
+            x: 15.1743
+            y: -1.0607
+            z: -0.2754
+          orientation:
+            x: -0.008372
+            y: 0.019025
+            z: -0.072606
+            w: 0.997144
+          yaw_deg: -8.35
+        - index: 8
+          position:
+            x: 16.706
+            y: -1.3696
+            z: -0.3494
+          orientation:
+            x: 0.003787
+            y: 0.059425
+            z: -0.065604
+            w: 0.996068
+          yaw_deg: -7.54
+        - index: 9
+          position:
+            x: 18.4118
+            y: -1.15
+            z: -0.5011
+          orientation:
+            x: 0.011778
+            y: 0.016332
+            z: 0.288556
+            w: 0.957251
+          yaw_deg: 33.57
+        - index: 10
+          position:
+            x: 19.8957
+            y: -0.2313
+            z: -0.5558
+          orientation:
+            x: 0.002579
+            y: 0.00473
+            z: 0.280087
+            w: 0.95996
+          yaw_deg: 32.53
+        - index: 11
+          position:
+            x: 21.6649
+            y: 0.7114
+            z: -0.6319
+          orientation:
+            x: 0.010791
+            y: 0.019483
+            z: 0.28068
+            w: 0.959543
+          yaw_deg: 32.64
+        - index: 12
+          position:
+            x: 23.0403
+            y: 1.4983
+            z: -0.7178
+          orientation:
+            x: 0.014641
+            y: 0.026094
+            z: 0.277052
+            w: 0.960389
+          yaw_deg: 32.23
+        - index: 13
+          position:
+            x: 24.7266
+            y: 2.4216
+            z: -0.7631
+          orientation:
+            x: 0.006757
+            y: 0.003965
+            z: 0.270062
+            w: 0.962811
+          yaw_deg: 31.34
+        - index: 14
+          position:
+            x: 26.2112
+            y: 3.0208
+            z: -0.8342
+          orientation:
+            x: 0.004507
+            y: 0.030786
+            z: 0.141232
+            w: 0.989487
+          yaw_deg: 16.28
+        - index: 15
+          position:
+            x: 27.8261
+            y: 3.3759
+            z: -1.0059
+          orientation:
+            x: -0.003451
+            y: 0.008762
+            z: 0.124391
+            w: 0.992189
+          yaw_deg: 14.29
+        - index: 16
+          position:
+            x: 29.6513
+            y: 3.7869
+            z: -1.0545
+          orientation:
+            x: 0.002389
+            y: 0.014606
+            z: 0.120976
+            w: 0.992545
+          yaw_deg: 13.91
+        - index: 17
+          position:
+            x: 31.1741
+            y: 3.9285
+            z: -1.1119
+          orientation:
+            x: -0.001277
+            y: 0.009266
+            z: 0.021242
+            w: 0.999731
+          yaw_deg: 2.43
+        - index: 18
+          position:
+            x: 33.0128
+            y: 3.8745
+            z: -1.1794
+          orientation:
+            x: -0.007896
+            y: 0.005383
+            z: 0.013406
+            w: 0.999864
+          yaw_deg: 1.53
+        - index: 19
+          position:
+            x: 34.8284
+            y: 3.8496
+            z: -1.2281
+          orientation:
+            x: -0.005603
+            y: 0.014024
+            z: 0.011807
+            w: 0.999816
+          yaw_deg: 1.34
+        - index: 20
+          position:
+            x: 36.4001
+            y: 3.7932
+            z: -1.3223
+          orientation:
+            x: -0.008509
+            y: 0.005939
+            z: 0.011464
+            w: 0.99988
+          yaw_deg: 1.31
+        - index: 21
+          position:
+            x: 38.0331
+            y: 3.8329
+            z: -1.391
+          orientation:
+            x: -0.009373
+            y: 0.015983
+            z: 0.040364
+            w: 0.999013
+          yaw_deg: 4.61
+        - index: 22
+          position:
+            x: 39.5992
+            y: 3.9118
+            z: -1.4514
+          orientation:
+            x: -0.011378
+            y: 0.01861
+            z: -0.013189
+            w: 0.999675
+          yaw_deg: -1.54
+      FGG_4:
+        metadata:
+          total: 23
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 2.8386
+            y: -0.0796
+            z: 0.0097
+          orientation:
+            x: 0.000319
+            y: 0.004521
+            z: -0.00746
+            w: 0.999962
+          yaw_deg: -0.85
+        - index: 1
+          position:
+            x: 4.622
+            y: -0.1989
+            z: -0.0166
+          orientation:
+            x: 0.001919
+            y: 0.007598
+            z: -0.009126
+            w: 0.999928
+          yaw_deg: -1.04
+        - index: 2
+          position:
+            x: 6.2148
+            y: -0.3385
+            z: -0.0724
+          orientation:
+            x: -0.001202
+            y: 0.008518
+            z: -0.009212
+            w: 0.999921
+          yaw_deg: -1.06
+        - index: 3
+          position:
+            x: 7.8682
+            y: -0.4934
+            z: -0.1179
+          orientation:
+            x: -0.001321
+            y: 0.007043
+            z: -0.010774
+            w: 0.999916
+          yaw_deg: -1.24
+        - index: 4
+          position:
+            x: 9.6067
+            y: -0.5745
+            z: -0.1526
+          orientation:
+            x: -0.002406
+            y: 0.006009
+            z: -0.01324
+            w: 0.999891
+          yaw_deg: -1.52
+        - index: 5
+          position:
+            x: 11.1474
+            y: -0.6085
+            z: -0.1636
+          orientation:
+            x: -0.003213
+            y: 0.007687
+            z: -0.022568
+            w: 0.999711
+          yaw_deg: -2.59
+        - index: 6
+          position:
+            x: 12.929
+            y: -0.7941
+            z: -0.1969
+          orientation:
+            x: -0.004552
+            y: 0.013749
+            z: -0.023705
+            w: 0.999614
+          yaw_deg: -2.72
+        - index: 7
+          position:
+            x: 14.7679
+            y: -1.0075
+            z: -0.2532
+          orientation:
+            x: -0.006783
+            y: 0.014481
+            z: -0.0247
+            w: 0.999567
+          yaw_deg: -2.84
+        - index: 8
+          position:
+            x: 16.5835
+            y: -1.1649
+            z: -0.3474
+          orientation:
+            x: 0.001136
+            y: 0.047691
+            z: -0.024847
+            w: 0.998552
+          yaw_deg: -2.85
+        - index: 9
+          position:
+            x: 18.3915
+            y: -1.1795
+            z: -0.4994
+          orientation:
+            x: 0.005282
+            y: 0.020794
+            z: 0.187386
+            w: 0.982052
+          yaw_deg: 21.63
+        - index: 10
+          position:
+            x: 19.8321
+            y: -0.1573
+            z: -0.5668
+          orientation:
+            x: 0.006219
+            y: 0.002998
+            z: 0.364383
+            w: 0.931224
+          yaw_deg: 42.74
+        - index: 11
+          position:
+            x: 21.3613
+            y: 1.0517
+            z: -0.6202
+          orientation:
+            x: 0.015397
+            y: 0.012873
+            z: 0.362864
+            w: 0.931626
+          yaw_deg: 42.58
+        - index: 12
+          position:
+            x: 22.6936
+            y: 2.094
+            z: -0.6769
+          orientation:
+            x: 0.012349
+            y: 0.020387
+            z: 0.360853
+            w: 0.932318
+          yaw_deg: 42.35
+        - index: 13
+          position:
+            x: 23.911
+            y: 3.1086
+            z: -0.7332
+          orientation:
+            x: 0.01701
+            y: 0.017823
+            z: 0.361059
+            w: 0.932218
+          yaw_deg: 42.37
+        - index: 14
+          position:
+            x: 25.3934
+            y: 3.9425
+            z: -0.785
+          orientation:
+            x: -0.000575
+            y: 0.015863
+            z: 0.020914
+            w: 0.999655
+          yaw_deg: 2.4
+        - index: 15
+          position:
+            x: 27.0711
+            y: 3.9312
+            z: -0.8964
+          orientation:
+            x: -0.002463
+            y: 0.087933
+            z: 0.012577
+            w: 0.996044
+          yaw_deg: 1.43
+        - index: 16
+          position:
+            x: 28.5888
+            y: 3.9124
+            z: -1.0072
+          orientation:
+            x: -0.003741
+            y: 0.009447
+            z: 0.00439
+            w: 0.999939
+          yaw_deg: 0.5
+        - index: 17
+          position:
+            x: 30.3923
+            y: 3.857
+            z: -1.0788
+          orientation:
+            x: -0.002673
+            y: 0.006292
+            z: 0.001393
+            w: 0.999976
+          yaw_deg: 0.16
+        - index: 18
+          position:
+            x: 32.1238
+            y: 3.7855
+            z: -1.1482
+          orientation:
+            x: -0.010086
+            y: 0.009145
+            z: 0.004127
+            w: 0.999899
+          yaw_deg: 0.46
+        - index: 19
+          position:
+            x: 33.6475
+            y: 3.6966
+            z: -1.1696
+          orientation:
+            x: -0.007025
+            y: 0.011911
+            z: 0.003349
+            w: 0.999899
+          yaw_deg: 0.37
+        - index: 20
+          position:
+            x: 35.4625
+            y: 3.7051
+            z: -1.2553
+          orientation:
+            x: -0.006226
+            y: 0.018716
+            z: 0.018449
+            w: 0.999635
+          yaw_deg: 2.1
+        - index: 21
+          position:
+            x: 37.0631
+            y: 3.6403
+            z: -1.3488
+          orientation:
+            x: -0.008065
+            y: 0.00876
+            z: 0.017394
+            w: 0.999778
+          yaw_deg: 1.99
+        - index: 22
+          position:
+            x: 38.7113
+            y: 3.6497
+            z: -1.4188
+          orientation:
+            x: -0.008344
+            y: 0.013883
+            z: 0.01727
+            w: 0.99972
+          yaw_deg: 1.97
+      default:
+        metadata:
+          total: 20
+          distance_threshold_m: 1.5
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 2.4909
+            y: -0.1688
+            z: 0.0137
+          orientation:
+            x: -0.001488
+            y: 0.004006
+            z: -0.012608
+            w: 0.999911
+          yaw_deg: -1.45
+        - index: 1
+          position:
+            x: 4.3549
+            y: -0.3168
+            z: -0.0102
+          orientation:
+            x: 0.002684
+            y: 0.00766
+            z: -0.008172
+            w: 0.999934
+          yaw_deg: -0.93
+        - index: 2
+          position:
+            x: 6.2193
+            y: -0.4636
+            z: -0.0656
+          orientation:
+            x: 0.000977
+            y: 0.009046
+            z: -0.01086
+            w: 0.9999
+          yaw_deg: -1.24
+        - index: 3
+          position:
+            x: 7.8947
+            y: -0.6141
+            z: -0.1088
+          orientation:
+            x: 0.000779
+            y: 0.007627
+            z: -0.010506
+            w: 0.999915
+          yaw_deg: -1.2
+        - index: 4
+          position:
+            x: 9.821
+            y: -0.7024
+            z: -0.1511
+          orientation:
+            x: -0.001963
+            y: 0.007529
+            z: -0.01578
+            w: 0.999845
+          yaw_deg: -1.81
+        - index: 5
+          position:
+            x: 11.4796
+            y: -0.7387
+            z: -0.1664
+          orientation:
+            x: -0.003045
+            y: 0.008906
+            z: -0.023293
+            w: 0.999684
+          yaw_deg: -2.67
+        - index: 6
+          position:
+            x: 12.9758
+            y: -0.8741
+            z: -0.1974
+          orientation:
+            x: -0.004181
+            y: 0.014064
+            z: -0.022816
+            w: 0.999632
+          yaw_deg: -2.62
+        - index: 7
+          position:
+            x: 14.8101
+            y: -1.1013
+            z: -0.2577
+          orientation:
+            x: -0.004444
+            y: 0.018428
+            z: -0.020975
+            w: 0.9996
+          yaw_deg: -2.41
+        - index: 8
+          position:
+            x: 16.6347
+            y: -1.2077
+            z: -0.3556
+          orientation:
+            x: 0.00378
+            y: 0.05257
+            z: -0.023859
+            w: 0.998325
+          yaw_deg: -2.72
+        - index: 9
+          position:
+            x: 18.4009
+            y: -1.4216
+            z: -0.4858
+          orientation:
+            x: -0.003648
+            y: 0.022538
+            z: -0.030574
+            w: 0.999272
+          yaw_deg: -3.52
+        - index: 10
+          position:
+            x: 20.006
+            y: -0.8468
+            z: -0.5801
+          orientation:
+            x: 0.007576
+            y: -0.00057
+            z: 0.41674
+            w: 0.908994
+          yaw_deg: 49.26
+        - index: 11
+          position:
+            x: 21.3033
+            y: 0.4821
+            z: -0.6262
+          orientation:
+            x: 0.016184
+            y: 0.012149
+            z: 0.413849
+            w: 0.910121
+          yaw_deg: 48.91
+        - index: 12
+          position:
+            x: 22.5021
+            y: 1.6598
+            z: -0.6693
+          orientation:
+            x: 0.017255
+            y: 0.018153
+            z: 0.413107
+            w: 0.910338
+          yaw_deg: 48.84
+        - index: 13
+          position:
+            x: 23.6437
+            y: 2.8566
+            z: -0.7265
+          orientation:
+            x: 0.016624
+            y: 0.019881
+            z: 0.410471
+            w: 0.911505
+          yaw_deg: 48.52
+        - index: 14
+          position:
+            x: 24.8903
+            y: 4.1622
+            z: -0.7371
+          orientation:
+            x: 0.006884
+            y: 0.010594
+            z: 0.403789
+            w: 0.914765
+          yaw_deg: 47.64
+        - index: 15
+          position:
+            x: 26.4123
+            y: 4.1477
+            z: -0.8243
+          orientation:
+            x: -0.001252
+            y: 0.048589
+            z: 0.010992
+            w: 0.998758
+          yaw_deg: 1.26
+        - index: 16
+          position:
+            x: 28.2626
+            y: 4.1145
+            z: -0.9958
+          orientation:
+            x: -0.004445
+            y: 0.010995
+            z: -0.002415
+            w: 0.999927
+          yaw_deg: -0.28
+        - index: 17
+          position:
+            x: 30.0767
+            y: 4.0292
+            z: -1.0565
+          orientation:
+            x: -0.002221
+            y: 0.013476
+            z: -0.006446
+            w: 0.999886
+          yaw_deg: -0.74
+        - index: 18
+          position:
+            x: 31.6409
+            y: 3.9979
+            z: -1.1295
+          orientation:
+            x: -0.002362
+            y: 0.007648
+            z: 0.029759
+            w: 0.999525
+          yaw_deg: 3.41
+        - index: 19
+          position:
+            x: 33.4347
+            y: 3.9955
+            z: -1.181
+          orientation:
+            x: -0.006136
+            y: 0.00755
+            z: 0.027079
+            w: 0.999586
+          yaw_deg: 3.1
+      FGG_5:
+        metadata:
+          total: 29
+          distance_threshold_m: 1.0
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 2.5554
+            y: -0.1034
+            z: 0.0143
+          orientation:
+            x: -0.000469
+            y: 0.003955
+            z: -0.008751
+            w: 0.999954
+          yaw_deg: -1.0
+        - index: 1
+          position:
+            x: 3.6663
+            y: -0.1761
+            z: 0.0032
+          orientation:
+            x: 0.004311
+            y: 0.003926
+            z: -0.008469
+            w: 0.999947
+          yaw_deg: -0.97
+        - index: 2
+          position:
+            x: 4.6705
+            y: -0.2363
+            z: -0.014
+          orientation:
+            x: 0.0042
+            y: 0.008205
+            z: -0.008238
+            w: 0.999924
+          yaw_deg: -0.94
+        - index: 3
+          position:
+            x: 5.8786
+            y: -0.3335
+            z: -0.0546
+          orientation:
+            x: 0.0017
+            y: 0.007298
+            z: -0.007416
+            w: 0.999944
+          yaw_deg: -0.85
+        - index: 4
+          position:
+            x: 7.1733
+            y: -0.4377
+            z: -0.0924
+          orientation:
+            x: 0.000521
+            y: 0.006625
+            z: -0.004426
+            w: 0.999968
+          yaw_deg: -0.51
+        - index: 5
+          position:
+            x: 8.1786
+            y: -0.5139
+            z: -0.1204
+          orientation:
+            x: 0.000168
+            y: 0.008257
+            z: -0.003341
+            w: 0.99996
+          yaw_deg: -0.38
+        - index: 6
+          position:
+            x: 9.2129
+            y: -0.5574
+            z: -0.1423
+          orientation:
+            x: -0.000794
+            y: 0.006686
+            z: -0.003267
+            w: 0.999972
+          yaw_deg: -0.38
+        - index: 7
+          position:
+            x: 10.3433
+            y: -0.5607
+            z: -0.1631
+          orientation:
+            x: -0.001421
+            y: 0.009758
+            z: -0.005979
+            w: 0.999933
+          yaw_deg: -0.69
+        - index: 8
+          position:
+            x: 11.3521
+            y: -0.5541
+            z: -0.1711
+          orientation:
+            x: -0.002959
+            y: 0.008138
+            z: -0.011143
+            w: 0.9999
+          yaw_deg: -1.28
+        - index: 9
+          position:
+            x: 12.4045
+            y: -0.5763
+            z: -0.1867
+          orientation:
+            x: -0.001662
+            y: 0.011738
+            z: -0.011945
+            w: 0.999858
+          yaw_deg: -1.37
+        - index: 10
+          position:
+            x: 13.5149
+            y: -0.7601
+            z: -0.2237
+          orientation:
+            x: -0.004509
+            y: 0.012263
+            z: -0.054171
+            w: 0.998446
+          yaw_deg: -6.22
+        - index: 11
+          position:
+            x: 14.5516
+            y: -0.9235
+            z: -0.2485
+          orientation:
+            x: -0.006605
+            y: 0.013639
+            z: -0.056178
+            w: 0.998306
+          yaw_deg: -6.45
+        - index: 12
+          position:
+            x: 15.9367
+            y: -1.0975
+            z: -0.3061
+          orientation:
+            x: -0.005836
+            y: 0.016551
+            z: -0.056668
+            w: 0.998239
+          yaw_deg: -6.51
+        - index: 13
+          position:
+            x: 17.0511
+            y: -1.2674
+            z: -0.366
+          orientation:
+            x: -0.001246
+            y: 0.034341
+            z: -0.056905
+            w: 0.997788
+          yaw_deg: -6.54
+        - index: 14
+          position:
+            x: 18.2258
+            y: -1.4738
+            z: -0.4717
+          orientation:
+            x: -0.00237
+            y: 0.027242
+            z: -0.057454
+            w: 0.997974
+          yaw_deg: -6.6
+        - index: 15
+          position:
+            x: 19.3014
+            y: -1.6748
+            z: -0.531
+          orientation:
+            x: -0.003925
+            y: 0.008761
+            z: -0.057487
+            w: 0.9983
+          yaw_deg: -6.6
+        - index: 16
+          position:
+            x: 20.4333
+            y: -1.8262
+            z: -0.5652
+          orientation:
+            x: -0.003793
+            y: 0.002001
+            z: -0.056959
+            w: 0.998367
+          yaw_deg: -6.53
+        - index: 17
+          position:
+            x: 21.0273
+            y: -0.8609
+            z: -0.6107
+          orientation:
+            x: 0.011583
+            y: 0.010369
+            z: 0.402113
+            w: 0.915458
+          yaw_deg: 47.43
+        - index: 18
+          position:
+            x: 22.0569
+            y: -0.0046
+            z: -0.6678
+          orientation:
+            x: 0.014486
+            y: 0.017159
+            z: 0.407062
+            w: 0.913124
+          yaw_deg: 48.08
+        - index: 19
+          position:
+            x: 22.8543
+            y: 0.8618
+            z: -0.6998
+          orientation:
+            x: 0.01568
+            y: 0.018175
+            z: 0.401366
+            w: 0.915603
+          yaw_deg: 47.37
+        - index: 20
+          position:
+            x: 23.7545
+            y: 1.7396
+            z: -0.7496
+          orientation:
+            x: 0.028154
+            y: 0.017478
+            z: 0.40239
+            w: 0.914868
+          yaw_deg: 47.5
+        - index: 21
+          position:
+            x: 24.5947
+            y: 2.5496
+            z: -0.7721
+          orientation:
+            x: 0.010789
+            y: 0.005681
+            z: 0.398251
+            w: 0.917195
+          yaw_deg: 46.94
+        - index: 22
+          position:
+            x: 25.3241
+            y: 3.31
+            z: -0.773
+          orientation:
+            x: 0.007062
+            y: 0.006496
+            z: 0.396379
+            w: 0.918037
+          yaw_deg: 46.71
+        - index: 23
+          position:
+            x: 26.4972
+            y: 3.4588
+            z: -0.851
+          orientation:
+            x: 0.000259
+            y: 0.06024
+            z: 0.077362
+            w: 0.995181
+          yaw_deg: 8.92
+        - index: 24
+          position:
+            x: 27.8717
+            y: 3.6096
+            z: -0.9889
+          orientation:
+            x: -0.001584
+            y: 0.008821
+            z: 0.070377
+            w: 0.99748
+          yaw_deg: 8.07
+        - index: 25
+          position:
+            x: 28.8725
+            y: 3.7231
+            z: -1.0267
+          orientation:
+            x: 0.000201
+            y: 0.011733
+            z: 0.069805
+            w: 0.997492
+          yaw_deg: 8.01
+        - index: 26
+          position:
+            x: 30.0743
+            y: 3.8407
+            z: -1.0689
+          orientation:
+            x: -0.001181
+            y: 0.012308
+            z: 0.068325
+            w: 0.997586
+          yaw_deg: 7.84
+        - index: 27
+          position:
+            x: 31.1157
+            y: 3.94
+            z: -1.1136
+          orientation:
+            x: 7.9e-05
+            y: 0.008927
+            z: 0.067347
+            w: 0.99769
+          yaw_deg: 7.72
+        - index: 28
+          position:
+            x: 32.2163
+            y: 3.9554
+            z: -1.1479
+          orientation:
+            x: -0.003893
+            y: 0.008535
+            z: 0.016307
+            w: 0.999823
+          yaw_deg: 1.87
+      FGG_6:
+        metadata:
+          total: 27
+          distance_threshold_m: 1.0
+          frame: map
+        waypoints:
+        - index: 0
+          position:
+            x: 2.7498
+            y: -0.1761
+            z: -0.0033
+          orientation:
+            x: 0.000325
+            y: 0.003826
+            z: 0.005461
+            w: 0.999978
+          yaw_deg: 0.63
+        - index: 1
+          position:
+            x: 3.9285
+            y: -0.224
+            z: -0.009
+          orientation:
+            x: 0.004724
+            y: 0.006148
+            z: 0.004784
+            w: 0.999958
+          yaw_deg: 0.55
+        - index: 2
+          position:
+            x: 5.1212
+            y: -0.2493
+            z: -0.0451
+          orientation:
+            x: 0.00574
+            y: 0.010931
+            z: 0.009205
+            w: 0.999881
+          yaw_deg: 1.06
+        - index: 3
+          position:
+            x: 6.2774
+            y: -0.3408
+            z: -0.0767
+          orientation:
+            x: 0.000843
+            y: 0.00956
+            z: 0.008655
+            w: 0.999916
+          yaw_deg: 0.99
+        - index: 4
+          position:
+            x: 7.305
+            y: -0.4081
+            z: -0.0994
+          orientation:
+            x: 0.000799
+            y: 0.00653
+            z: 0.009398
+            w: 0.999934
+          yaw_deg: 1.08
+        - index: 5
+          position:
+            x: 8.4747
+            y: -0.4283
+            z: -0.1294
+          orientation:
+            x: -0.000418
+            y: 0.009258
+            z: 0.008879
+            w: 0.999918
+          yaw_deg: 1.02
+        - index: 6
+          position:
+            x: 9.667
+            y: -0.4216
+            z: -0.1568
+          orientation:
+            x: 6.9e-05
+            y: 0.006495
+            z: 0.00878
+            w: 0.99994
+          yaw_deg: 1.01
+        - index: 7
+          position:
+            x: 10.9513
+            y: -0.376
+            z: -0.163
+          orientation:
+            x: -0.000927
+            y: 0.00917
+            z: 0.005395
+            w: 0.999943
+          yaw_deg: 0.62
+        - index: 8
+          position:
+            x: 12.1828
+            y: -0.3854
+            z: -0.1816
+          orientation:
+            x: -0.000635
+            y: 0.011875
+            z: 0.004386
+            w: 0.99992
+          yaw_deg: 0.5
+        - index: 9
+          position:
+            x: 13.3927
+            y: -0.5418
+            z: -0.2243
+          orientation:
+            x: -0.004339
+            y: 0.014294
+            z: -0.036392
+            w: 0.999226
+          yaw_deg: -4.18
+        - index: 10
+          position:
+            x: 14.6314
+            y: -0.6996
+            z: -0.2539
+          orientation:
+            x: -0.004442
+            y: 0.013735
+            z: -0.036665
+            w: 0.999223
+          yaw_deg: -4.21
+        - index: 11
+          position:
+            x: 15.6447
+            y: -0.7941
+            z: -0.297
+          orientation:
+            x: -0.005852
+            y: 0.013174
+            z: -0.03896
+            w: 0.999137
+          yaw_deg: -4.48
+        - index: 12
+          position:
+            x: 16.7485
+            y: -0.86
+            z: -0.3681
+          orientation:
+            x: -0.000818
+            y: 0.053949
+            z: -0.037943
+            w: 0.997822
+          yaw_deg: -4.37
+        - index: 13
+          position:
+            x: 17.8502
+            y: -1.0591
+            z: -0.4459
+          orientation:
+            x: 0.001097
+            y: 0.029187
+            z: -0.033568
+            w: 0.99901
+          yaw_deg: -3.85
+        - index: 14
+          position:
+            x: 19.137
+            y: -1.1997
+            z: -0.5202
+          orientation:
+            x: -0.003696
+            y: 0.012362
+            z: -0.038068
+            w: 0.999192
+          yaw_deg: -4.37
+        - index: 15
+          position:
+            x: 20.1008
+            y: -0.3621
+            z: -0.5823
+          orientation:
+            x: 0.008634
+            y: -0.002306
+            z: 0.496486
+            w: 0.867998
+          yaw_deg: 59.53
+        - index: 16
+          position:
+            x: 20.664
+            y: 0.6112
+            z: -0.601
+          orientation:
+            x: 0.008137
+            y: 0.004729
+            z: 0.494249
+            w: 0.86927
+          yaw_deg: 59.24
+        - index: 17
+          position:
+            x: 21.4344
+            y: 1.5608
+            z: -0.6226
+          orientation:
+            x: 0.018227
+            y: 0.010512
+            z: 0.499983
+            w: 0.865779
+          yaw_deg: 60.01
+        - index: 18
+          position:
+            x: 22.0807
+            y: 2.5048
+            z: -0.6486
+          orientation:
+            x: 0.018201
+            y: 0.016978
+            z: 0.501129
+            w: 0.865015
+          yaw_deg: 60.19
+        - index: 19
+          position:
+            x: 22.7336
+            y: 3.5946
+            z: -0.6536
+          orientation:
+            x: 0.018139
+            y: 0.019418
+            z: 0.497512
+            w: 0.86705
+          yaw_deg: 59.72
+        - index: 20
+          position:
+            x: 23.9598
+            y: 3.8578
+            z: -0.727
+          orientation:
+            x: 0.000867
+            y: 0.021472
+            z: 0.035567
+            w: 0.999136
+          yaw_deg: 4.08
+        - index: 21
+          position:
+            x: 25.1504
+            y: 3.879
+            z: -0.7672
+          orientation:
+            x: 0.000513
+            y: 0.012641
+            z: 0.034988
+            w: 0.999308
+          yaw_deg: 4.01
+        - index: 22
+          position:
+            x: 26.1979
+            y: 3.9341
+            z: -0.8227
+          orientation:
+            x: 0.004677
+            y: 0.031277
+            z: 0.033974
+            w: 0.998922
+          yaw_deg: 3.92
+        - index: 23
+          position:
+            x: 27.7662
+            y: 3.9578
+            z: -0.9982
+          orientation:
+            x: -0.004641
+            y: 0.008447
+            z: 0.02408
+            w: 0.999664
+          yaw_deg: 2.76
+        - index: 24
+          position:
+            x: 28.8343
+            y: 4.0726
+            z: -1.0266
+          orientation:
+            x: -0.000577
+            y: 0.017567
+            z: 0.01216
+            w: 0.999772
+          yaw_deg: 1.39
+        - index: 25
+          position:
+            x: 29.8296
+            y: 3.9687
+            z: -1.0663
+          orientation:
+            x: -0.000555
+            y: 0.016586
+            z: -0.020439
+            w: 0.999653
+          yaw_deg: -2.34
+        - index: 26
+          position:
+            x: 30.8532
+            y: 3.9102
+            z: -1.087
+          orientation:
+            x: -0.002687
+            y: 0.012343
+            z: -0.014797
+            w: 0.999811
+          yaw_deg: -1.7
